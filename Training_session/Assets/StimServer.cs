@@ -3,8 +3,6 @@ using System.Net.Sockets;
 using System.Text;
 using UnityEngine;
 using System.Threading;
-using UnityEditor.UI;
-using System.Diagnostics;
 
 public class StimServer : MonoBehaviour
 {   // server
@@ -15,12 +13,16 @@ public class StimServer : MonoBehaviour
     bool running;
 
     // stimulus
+    public float[] freqs = {0, 0, 0, 0}; //t, b, l, r
+    public const int frameRate = 60;
+    public const float dutyCycle = 0.5f;
+    public int frameCount = 0;
 
     // movement
     public Vector3 gripper_pos = Vector3.zero;
 
     void Start()
-    {
+    {   
         // receive on a separate thread so Unity doesn't freeze waiting for data
         ThreadStart ts = new ThreadStart(GetData);
         thread = new Thread(ts);
@@ -58,8 +60,6 @@ public class StimServer : MonoBehaviour
         // parse data is not empty
         if (dataReceived != null && dataReceived != "")
         {
-            UnityEngine.Debug.Log(dataReceived);
-
             // process msg and update stim
             string[] msgArray = dataReceived.Split(':');
             if (msgArray[0] == "move")
@@ -68,49 +68,65 @@ public class StimServer : MonoBehaviour
             }
             else if (msgArray[0] == "reset")
             {
+                gripper_pos = Vector3.zero; // reset pos
+                frameCount = 0;             // reset frame count
+
+                // update freqs
+                for (int i = 0; i < freqs.Length; i++)
+                {
+                    if (float.TryParse(msgArray[1].Split(',')[i], out float floatValue))
+                    {
+                        freqs[i] = floatValue;
+                    }
+                    else
+                    {
+                        freqs[i] = 0; // failed parse
+                    }
+                }
             }
 
             // echo msg as response
             nwStream.Write(buffer, 0, bytesRead);
         }
+    }
 
-        // update gripper position
-        void UpdatePos(string data)
+    // update gripper position
+    void UpdatePos(string data)
+    {
+        string[] dataElements = data.Split(',');
+        char direction = char.Parse(dataElements[0]);
+        float stepSize = float.Parse(dataElements[1]);
+
+        // move right, left, up, down, forward or back by step m
+        if (direction == 'r')
         {
-            string[] dataElements = data.Split(',');
-            char direction = char.Parse(dataElements[0]);
-            float stepSize = float.Parse(dataElements[1]);
-
-            // move right, left, up, down, forward or back by step m
-            if (direction == 'r')
-            {
-                gripper_pos += new Vector3(stepSize, 0, 0);
-            }
-            else if (direction == 'l')
-            {
-                gripper_pos += new Vector3(-stepSize, 0, 0);
-            }
-            else if (direction == 'u')
-            {
-                gripper_pos += new Vector3(0, stepSize, 0);
-            }
-            else if (direction == 'd')
-            {
-                gripper_pos += new Vector3(0, -stepSize, 0);
-            }
-            else if (direction == 'f')
-            {
-                gripper_pos += new Vector3(0, 0, -stepSize);
-            }
-            else if (direction == 'b')
-            {
-                gripper_pos += new Vector3(0, 0, stepSize);
-            }
+            gripper_pos += new Vector3(stepSize, 0, 0);
         }
-
-        void Update()
+        else if (direction == 'l')
         {
-            // Could update stim position more frequently then messages received
+            gripper_pos += new Vector3(-stepSize, 0, 0);
         }
+        else if (direction == 'u')
+        {
+            gripper_pos += new Vector3(0, stepSize, 0);
+        }
+        else if (direction == 'd')
+        {
+            gripper_pos += new Vector3(0, -stepSize, 0);
+        }
+        else if (direction == 'f')
+        {
+            gripper_pos += new Vector3(0, 0, -stepSize);
+        }
+        else if (direction == 'b')
+        {
+            gripper_pos += new Vector3(0, 0, stepSize);
+        }
+    }
+
+    void Update()
+    {
+        // Could update stim position more frequently then messages received
+        frameCount += 1;
     }
 }
