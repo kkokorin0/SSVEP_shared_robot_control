@@ -203,9 +203,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3344ebc4fb490644abf1e378044bb1be, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  server: {fileID: 1628850355}
-  offset: {x: 0, y: -0.1, z: 0}
-  blockIndex: 1
+  Server: {fileID: 1628850355}
+  Offset: {x: 0, y: -0.1, z: 0}
+  BlockIndex: 1
 --- !u!114 &712142806
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -654,14 +654,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6190daa40f035124b9f8fce80e4508ad, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  connectionPort: 25001
-  freqs:
-  - 11
-  - 13
-  - 17
-  - 19
-  frameCount: 0
-  gripper_pos: {x: 0, y: 0, z: 0.8}
+  StartTime: 0
+  Freqs:
+  - 0
+  - 0
+  - 0
+  - 0
+  GripperPos: {x: 0, y: 0, z: 2}
 --- !u!1 &1639841116
 GameObject:
   m_ObjectHideFlags: 0
@@ -697,9 +696,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3344ebc4fb490644abf1e378044bb1be, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  server: {fileID: 1628850355}
-  offset: {x: -0.1, y: 0, z: 0}
-  blockIndex: 2
+  Server: {fileID: 1628850355}
+  Offset: {x: -0.1, y: 0, z: 0}
+  BlockIndex: 2
 --- !u!114 &1639841118
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -970,9 +969,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3344ebc4fb490644abf1e378044bb1be, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  server: {fileID: 1628850355}
-  offset: {x: 0.1, y: 0, z: 0}
-  blockIndex: 3
+  Server: {fileID: 1628850355}
+  Offset: {x: 0.1, y: 0, z: 0}
+  BlockIndex: 3
 --- !u!114 &1874468715
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1322,9 +1321,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3344ebc4fb490644abf1e378044bb1be, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  server: {fileID: 1628850355}
-  offset: {x: 0, y: 0.1, z: 0}
-  blockIndex: 0
+  Server: {fileID: 1628850355}
+  Offset: {x: 0, y: 0.1, z: 0}
+  BlockIndex: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -5,10 +5,9 @@ import time
 
 class StimController:
     bufsize = 1024
-    host = "127.0.0.1"
-
     port = 25001
-    # host = "10.12.78.201" HoloLens IP
+    host = "10.12.89.225"  # HoloLens
+    # host = "127.0.0.1"  # UnitySim
 
     def __init__(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -40,9 +39,10 @@ class StimController:
 
 # Constants
 N_TRIALS = 10
-SAMPLE_T = 0.5  # s
-STEP_SIZE = 0.05  # m
-FREQS = [0, 0, 0, 0]  # grab something from literature
+ROBOT_VEL = 0.05  # m/s
+SAMPLE_T = 0.2  # s
+STEP_SIZE = ROBOT_VEL * SAMPLE_T  # m
+FREQS = [14, 15, 17, 18]  # grab something from literature
 
 if __name__ == "__main__":
     unity_game = StimController()
@@ -50,11 +50,12 @@ if __name__ == "__main__":
     for trial in range(N_TRIALS):
         print("Running trial %d/%d" % (trial + 1, N_TRIALS))
         unity_game.setup_stim(FREQS)  # reset the stimuli
+        # exit(0)
 
         run_trial = True
         while run_trial:
             # get user command
-            direction = "r"
+            direction = "d"
             # move the robot
             # update stimuli
             unity_game.move_stim(direction, STEP_SIZE)

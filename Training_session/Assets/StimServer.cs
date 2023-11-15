@@ -6,127 +6,132 @@ using System.Threading;
 
 public class StimServer : MonoBehaviour
 {   // server
-    public int connectionPort = 25001;
-    TcpListener server;
-    TcpClient client;
-    Thread thread;
-    bool running;
+    private int _connectionPort = 25001;
+    TcpListener _server;
+    TcpClient _client;
+    Thread _thread;
+    bool _running;
 
     // stimulus
-    public float[] freqs = {0, 0, 0, 0}; //t, b, l, r
-    public const int frameRate = 60;
-    public const float dutyCycle = 0.5f;
-    public int frameCount = 0;
+    public float StartTime;
+    public float[] Freqs = {0, 0, 0, 0}; //t, b, l, r
 
     // movement
-    public Vector3 gripper_pos = Vector3.zero;
+    private Vector3 _gripperStart = new(0, 0, 2);
+    public Vector3 GripperPos;
 
     void Start()
-    {   
+    {
+        StartTime = Time.time;
+        GripperPos = _gripperStart;
+
+        // setup the world coordinates
+
         // receive on a separate thread so Unity doesn't freeze waiting for data
-        ThreadStart ts = new ThreadStart(GetData);
-        thread = new Thread(ts);
-        thread.Start();
+        ThreadStart ts = new(GetData);
+        _thread = new Thread(ts);
+        _thread.Start();
     }
 
     void GetData()
     {
         // create the server
-        server = new TcpListener(IPAddress.Any, connectionPort);
-        server.Start();
+        _server = new TcpListener(IPAddress.Any, _connectionPort);
+        _server.Start();
 
         // create a client to get the data stream
-        client = server.AcceptTcpClient();
+        _client = _server.AcceptTcpClient();
 
         // listen
-        running = true;
-        while (running)
+        _running = true;
+        while (_running)
         {
             Connection();
         }
-        server.Stop();
+        _server.Stop();
     }
 
     void Connection()
     {
         // read data from the network stream
-        NetworkStream nwStream = client.GetStream();
-        byte[] buffer = new byte[client.ReceiveBufferSize];
-        int bytesRead = nwStream.Read(buffer, 0, client.ReceiveBufferSize);
+        var nwStream = _client.GetStream();
+        var buffer = new byte[_client.ReceiveBufferSize];
+        var bytesRead = nwStream.Read(buffer, 0, _client.ReceiveBufferSize);
 
         // decode the bytes into a string
-        string dataReceived = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+        var dataReceived = Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-        // parse data is not empty
-        if (dataReceived != null && dataReceived != "")
+        // data is empty
+        if (dataReceived == null || dataReceived == "") return;
+        
+        // process msg and update stim
+        var msgArray = dataReceived.Split(':');
+        Debug.Log(msgArray[0]);
+        Debug.Log(msgArray[1]);
+        
+        switch (msgArray[0])
         {
-            // process msg and update stim
-            string[] msgArray = dataReceived.Split(':');
-            if (msgArray[0] == "move")
-            {
+            case "move":
                 UpdatePos(msgArray[1]);
-            }
-            else if (msgArray[0] == "reset")
-            {
-                gripper_pos = Vector3.zero; // reset pos
-                frameCount = 0;             // reset frame count
+                break;
 
+            case "reset":
                 // update freqs
-                for (int i = 0; i < freqs.Length; i++)
+                for (var i = 0; i < Freqs.Length; i++)
                 {
+                    Freqs[i] = 0; // set to 0 if can't parse
                     if (float.TryParse(msgArray[1].Split(',')[i], out float floatValue))
                     {
-                        freqs[i] = floatValue;
-                    }
-                    else
-                    {
-                        freqs[i] = 0; // failed parse
+                        Freqs[i] = floatValue;
                     }
                 }
-            }
 
-            // echo msg as response
-            nwStream.Write(buffer, 0, bytesRead);
+                GripperPos = _gripperStart;  // reset pos
+                break;
         }
+
+        // echo msg as response
+        nwStream.Write(buffer, 0, bytesRead);
+        
     }
 
     // update gripper position
     void UpdatePos(string data)
     {
-        string[] dataElements = data.Split(',');
-        char direction = char.Parse(dataElements[0]);
-        float stepSize = float.Parse(dataElements[1]);
+        var dataElements = data.Split(',');
+        var direction = char.Parse(dataElements[0]);
+        var stepSize = float.Parse(dataElements[1]);
 
         // move right, left, up, down, forward or back by step m
-        if (direction == 'r')
+        switch (direction)
         {
-            gripper_pos += new Vector3(stepSize, 0, 0);
-        }
-        else if (direction == 'l')
-        {
-            gripper_pos += new Vector3(-stepSize, 0, 0);
-        }
-        else if (direction == 'u')
-        {
-            gripper_pos += new Vector3(0, stepSize, 0);
-        }
-        else if (direction == 'd')
-        {
-            gripper_pos += new Vector3(0, -stepSize, 0);
-        }
-        else if (direction == 'f')
-        {
-            gripper_pos += new Vector3(0, 0, -stepSize);
-        }
-        else if (direction == 'b')
-        {
-            gripper_pos += new Vector3(0, 0, stepSize);
+            case 'r':
+            GripperPos += new Vector3(stepSize, 0, 0);
+            break;
+
+            case 'l':
+            GripperPos += new Vector3(-stepSize, 0, 0);
+            break;
+
+            case 'u':
+            GripperPos += new Vector3(0, stepSize, 0);
+            break;
+
+            case 'd':
+            GripperPos += new Vector3(0, -stepSize, 0);
+            break;
+
+            case 'f':
+            GripperPos += new Vector3(0, 0, -stepSize);
+            break;
+
+            case 'b':
+            GripperPos += new Vector3(0, 0, stepSize);
+            break;
         }
     }
 
     void Update()
     {
-        // Could update stim position more frequently then messages received
-        frameCount += 1;
     }
 }

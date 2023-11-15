@@ -1,50 +1,40 @@
-using System.Collections;
-using System.Collections.Generic;
-using Unity.Networking.Transport.TLS;
 using UnityEngine;
-using UnityEngine.Timeline;
 
 public class StimBehaviour : MonoBehaviour
 {
-    public StimServer server;       // comms with python
-    public Vector3 offset;          // gripper offset
-    public int blockIndex;          // t, b, l, r
-    const float blockSize = 0.08f;  // m
-    int toggleFrame = 0;            // last frame block changed
-
-    // init stim
+    public StimServer Server;       // comms with python
+    public Vector3 Offset;          // gripper offset
+    public int BlockIndex;          // t, b, l, r
+    const float MaxSize = 0.08f;    // m
+    
     void Start()
+    // init stim
     {
-        transform.localPosition = server.gripper_pos + offset;
-        transform.localScale = new Vector3(blockSize, blockSize, blockSize);
+        transform.localPosition = Server.GripperPos + Offset;
+        transform.localScale = new Vector3(MaxSize, MaxSize, MaxSize);
     }
 
-    // update stim pos and flash
+
     void Update()
+    // update stim pos and flash
     {
-        transform.position = server.gripper_pos + offset;
+        transform.position = Server.GripperPos + Offset;
 
-        int onFrames = StimServer.frameRate;
-        if (server.freqs[blockIndex] != 0) // do nothing if freq == 0
+        if (Server.Freqs[BlockIndex] == 0)
         {
-            onFrames = (int)Mathf.Round(StimServer.frameRate / server.freqs[blockIndex] *
-                StimServer.dutyCycle);
-
-            if (server.frameCount > toggleFrame + onFrames)
-            {
-                if (transform.localScale == Vector3.zero) // turn on
-                {
-                    transform.localScale = new Vector3(blockSize, blockSize, blockSize);
-                }
-                else
-                {
-                    transform.localScale = Vector3.zero; // turn off
-                    toggleFrame = server.frameCount;
-                }
-            }
+            // don't flash
+            transform.localScale = new Vector3(MaxSize, MaxSize, MaxSize);
         }
-        //Debug.Log(server.freqs[blockIndex]);
-        //Debug.Log(onFrames);
+        else
+        {
+            // create square wave for block size
+            var elapsedTime = Time.time - Server.StartTime;
+            var amplitude = Mathf.Sin(2 * Mathf.PI * Server.Freqs[BlockIndex] * elapsedTime);
+            var blockSize = MaxSize / 2 * (Mathf.Sign(amplitude) + 1);
 
+            transform.localScale = new Vector3(blockSize, blockSize, blockSize);
+            //Debug.Log(string.Format("Freq: {0}, time: {1}, A: {2}, size: {3}", 
+            //    server.freqs[blockIndex], elapsedTime, amplitude, blockSize))
+        }
     }
 }
