@@ -168,6 +168,11 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &611912518 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1958783570294104, guid: d3f436728a834c94eb3d882d0dabd410, type: 3}
+  m_PrefabInstance: {fileID: 1290759588}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &712142804
 GameObject:
   m_ObjectHideFlags: 0
@@ -830,6 +835,10 @@ MonoBehaviour:
   - 0
   GripperPos: {x: 0, y: 0, z: 2}
   QrCodesManager: {fileID: 1290759590}
+  QRCodePose:
+    position: {x: 0, y: 0, z: 0}
+    rotation: {x: 0, y: 0, z: 0, w: 0}
+  QRCodeFrame: {fileID: 611912518}
 --- !u!1 &1639841116
 GameObject:
   m_ObjectHideFlags: 0
