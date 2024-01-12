@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using UnityEngine;
 using System.Threading;
+using Microsoft.MixedReality.SampleQRCodes;
 
 public class StimServer : MonoBehaviour
 {   // server
@@ -20,12 +21,16 @@ public class StimServer : MonoBehaviour
     private Vector3 _gripperStart = new(0, 0, 2);
     public Vector3 GripperPos;
 
+    // QR code tracking
+    public QRCodesManager QrCodesManager;
+
     void Start()
     {
         StartTime = Time.time;
         GripperPos = _gripperStart;
 
-        // setup the world coordinates
+        // setup QR detection
+        QrCodesManager.StartQRTracking();
 
         // receive on a separate thread so Unity doesn't freeze waiting for data
         ThreadStart ts = new(GetData);
@@ -133,5 +138,10 @@ public class StimServer : MonoBehaviour
 
     void Update()
     {
+        // look for QR code and setup global coords
+        /*if (QrCodesManager.GetList().Count == 0) return;
+        Debug.Log(QrCodesManager.GetList()[0].ToString());
+        QrCodesManager.StopQRTracking();*/
+
     }
 }

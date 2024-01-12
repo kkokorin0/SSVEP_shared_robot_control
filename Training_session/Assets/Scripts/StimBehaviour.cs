@@ -33,8 +33,6 @@ public class StimBehaviour : MonoBehaviour
             var blockSize = MaxSize / 2 * (Mathf.Sign(amplitude) + 1);
 
             transform.localScale = new Vector3(blockSize, blockSize, blockSize);
-            //Debug.Log(string.Format("Freq: {0}, time: {1}, A: {2}, size: {3}", 
-            //    server.freqs[blockIndex], elapsedTime, amplitude, blockSize))
         }
     }
 }

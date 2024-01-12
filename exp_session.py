@@ -6,7 +6,7 @@ import time
 class StimController:
     bufsize = 1024
     port = 25001
-    host = "10.12.89.225"  # HoloLens
+    host = "10.15.254.106"  # HoloLens
     # host = "127.0.0.1"  # UnitySim
 
     def __init__(self):
