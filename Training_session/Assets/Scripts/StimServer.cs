@@ -22,8 +22,10 @@ public class StimServer : MonoBehaviour
     public float[] Freqs = {0, 0, 0, 0}; //t, b, l, r
 
     // movement
-    private Vector3 _gripperStart = new(0, 0, 2);
-    public Vector3 GripperPos;
+    private Vector3 _gripperStart = new(0, 0, 0);
+    private Vector3 _robotToQR = new(-0.182f, 0.378f, 0.414f);
+    private Vector3 _gripperPos;
+    public Pose GripperPose;
 
     // QR code tracking
     public QRCodesManager QrCodesManager;
@@ -31,11 +33,13 @@ public class StimServer : MonoBehaviour
     private Guid _qrCoords;
     public Pose QRCodePose;
     public GameObject QRCodeFrame;
+    public GameObject DummyQR;
 
     void Start()
     {
         StartTime = Time.time;
-        GripperPos = _gripperStart;
+        _gripperPos = _gripperStart;
+        GripperPose = new Pose(_gripperPos, Quaternion.identity);
 
         // setup QR detection
         QrCodesManager.StartQRTracking();
@@ -86,6 +90,7 @@ public class StimServer : MonoBehaviour
         {
             case "move":
                 UpdatePos(msgArray[1]);
+                UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
                 break;
 
             case "reset":
@@ -99,7 +104,7 @@ public class StimServer : MonoBehaviour
                     }
                 }
 
-                GripperPos = _gripperStart;  // reset pos
+                _gripperPos = _gripperStart;  // reset pos
                 break;
         }
 
@@ -112,100 +117,36 @@ public class StimServer : MonoBehaviour
     void UpdatePos(string data)
     {
         var dataElements = data.Split(',');
-        var direction = char.Parse(dataElements[0]);
-        var stepSize = float.Parse(dataElements[1]);
-
-        // move right, left, up, down, forward or back by step m
-        switch (direction)
-        {
-            case 'r':
-            GripperPos += new Vector3(stepSize, 0, 0);
-            break;
-
-            case 'l':
-            GripperPos += new Vector3(-stepSize, 0, 0);
-            break;
-
-            case 'u':
-            GripperPos += new Vector3(0, stepSize, 0);
-            break;
-
-            case 'd':
-            GripperPos += new Vector3(0, -stepSize, 0);
-            break;
-
-            case 'f':
-            GripperPos += new Vector3(0, 0, -stepSize);
-            break;
-
-            case 'b':
-            GripperPos += new Vector3(0, 0, stepSize);
-            break;
-        }
+        _gripperPos = new Vector3(float.Parse(dataElements[0]), float.Parse(dataElements[1]),
+            float.Parse(dataElements[2]));
     }
-
-    //Get pose in Unity coordinates based on spatial graph node id
-    /*private Pose GetPose(Guid spatialGraphNodeId)
+    
+    void UpdateGripperPose(Pose QRPose, Vector3 RobotOrigin, Vector3 GripperPos)
     {
-        System.Numerics.Matrix4x4? relativePose = System.Numerics.Matrix4x4.Identity;
-
-        SpatialGraphNode coordinateSystem = SpatialGraphNode.FromStaticNodeId(spatialGraphNodeId);
-
-        /*SpatialCoordinateSystem coordinateSystem =
-          Windows.Perception.Spatial.Preview.SpatialGraphInteropPreview.
-            CreateCoordinateSystemForNode(spatialGraphNodeId);#1#
-
-        SpatialCoordinateSystem rootSpatialCoordinateSystem =
-          (SpatialCoordinateSystem)System.Runtime.InteropServices.Marshal.
-              GetObjectForIUnknown(WorldManager.GetNativeISpatialCoordinateSystemPtr());
-
-        // Get the relative transform from the unity origin
-        relativePose = coordinateSystem.TryGetTransformTo(rootSpatialCoordinateSystem);
-
-        System.Numerics.Matrix4x4 newMatrix = relativePose.Value;
-
-        // Platform coordinates are all right handed and unity uses left handed matrices. 
-        // so we convert the matrix from rhs-rhs to lhs-lhs 
-        newMatrix.M13 = -newMatrix.M13;
-        newMatrix.M23 = -newMatrix.M23;
-        newMatrix.M43 = -newMatrix.M43;
-
-        newMatrix.M31 = -newMatrix.M31;
-        newMatrix.M32 = -newMatrix.M32;
-        newMatrix.M34 = -newMatrix.M34;
-
-        System.Numerics.Vector3 scale;
-        System.Numerics.Quaternion rotation1;
-        System.Numerics.Vector3 translation1;
-
-        System.Numerics.Matrix4x4.Decompose(newMatrix, out scale, out rotation1,
-                                            out translation1);
-        var translation = new Vector3(translation1.X, translation1.Y, translation1.Z);
-        var rotation = new Quaternion(rotation1.X, rotation1.Y, rotation1.Z, rotation1.W);
-        var pose = new Pose(translation, rotation);
-
-        // If there is a parent to the camera that means we are using teleport and we
-        // should not apply the teleport to these objects so apply the inverse
-        if (CameraCache.Main.transform.parent != null)
-        {
-            pose = pose.GetTransformedBy(CameraCache.Main.transform.parent);
-        }
-
-        return pose;
-    }*/
-
+        var gripperPos = QRPose.position + QRPose.rotation * (RobotOrigin + GripperPos);
+        GripperPose = new Pose(gripperPos, QRPose.rotation);
+    }
+    
     void Update()
     {
         // look for QR code and setup global coords
-        if (QrCodesManager.GetList().Count == 0) return;
-        _qrCode = QrCodesManager.GetList()[0];
-        _qrCoords = _qrCode.SpatialGraphNodeId;
-        SpatialGraphNode coordinateSystem = SpatialGraphNode.FromStaticNodeId(_qrCoords);
-        coordinateSystem.TryLocate(FrameTime.OnUpdate, out Pose QRCodePose);
-        QRCodeFrame.transform.SetPositionAndRotation(QRCodePose.position, QRCodePose.rotation);
-
-        /*Debug.Log(QrCodesManager.GetList()[0].ToString());*/
-        /*QrCodesManager.StopQRTracking();*/
-
+        if (QrCodesManager.GetList().Count == 0)
+        {
+            // use simulated QR code
+            QRCodePose = new Pose(DummyQR.transform.position, DummyQR.transform.rotation);
+            UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
+            QRCodeFrame.transform.SetPositionAndRotation(GripperPose.position, GripperPose.rotation);
+        }
+        else
+        {
+            // actual QR code found
+            _qrCode = QrCodesManager.GetList()[0];
+            _qrCoords = _qrCode.SpatialGraphNodeId;
+            SpatialGraphNode coordinateSystem = SpatialGraphNode.FromStaticNodeId(_qrCoords);
+            coordinateSystem.TryLocate(FrameTime.OnUpdate, out QRCodePose);
+            UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
+            QRCodeFrame.transform.SetPositionAndRotation(GripperPose.position, GripperPose.rotation);
+            /*QrCodesManager.StopQRTracking();*/
+        }
     }
 }

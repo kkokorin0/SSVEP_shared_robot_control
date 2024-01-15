@@ -10,7 +10,7 @@ public class StimBehaviour : MonoBehaviour
     void Start()
     // init stim
     {
-        transform.localPosition = Server.GripperPos + Offset;
+        transform.localPosition = Server.GripperPose.position + Offset;
         transform.localScale = new Vector3(MaxSize, MaxSize, MaxSize);
     }
 
@@ -18,7 +18,8 @@ public class StimBehaviour : MonoBehaviour
     void Update()
     // update stim pos and flash
     {
-        transform.position = Server.GripperPos + Offset;
+        transform.position = Server.GripperPose.position + Server.GripperPose.rotation * Offset;
+        transform.rotation = Server.GripperPose.rotation;
 
         if (Server.Freqs[BlockIndex] == 0)
         {
