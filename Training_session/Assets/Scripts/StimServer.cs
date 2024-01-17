@@ -140,6 +140,7 @@ public class StimServer : MonoBehaviour
         else
         {
             // actual QR code found
+            DummyQR.transform.localScale = new Vector3(0, 0, 0);
             _qrCode = QrCodesManager.GetList()[0];
             _qrCoords = _qrCode.SpatialGraphNodeId;
             SpatialGraphNode coordinateSystem = SpatialGraphNode.FromStaticNodeId(_qrCoords);
