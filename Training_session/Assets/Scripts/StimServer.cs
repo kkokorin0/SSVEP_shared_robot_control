@@ -6,8 +6,6 @@ using UnityEngine;
 using System.Threading;
 using Microsoft.MixedReality.OpenXR;
 using Microsoft.MixedReality.SampleQRCodes;
-using Microsoft.MixedReality.QR;
-using Microsoft.MixedReality.Toolkit.Utilities;
 
 public class StimServer : MonoBehaviour
 {   // server
@@ -22,7 +20,7 @@ public class StimServer : MonoBehaviour
     public float[] Freqs = {0, 0, 0, 0}; //t, b, l, r
 
     // movement
-    private Vector3 _gripperStart = new(0, 0, 0);
+    private Vector3 _gripperStart = new(0.199f, -0.311f, -0.283f);
     private Vector3 _robotToQR = new(-0.182f, 0.378f, 0.414f);
     private Vector3 _gripperPos;
     public Pose GripperPose;
@@ -31,6 +29,7 @@ public class StimServer : MonoBehaviour
     public QRCodesManager QrCodesManager;
     private Microsoft.MixedReality.QR.QRCode _qrCode;
     private Guid _qrCoords;
+    private bool _qrFound = false;
     public Pose QRCodePose;
     public GameObject QRCodeFrame;
     public GameObject DummyQR;
@@ -104,7 +103,9 @@ public class StimServer : MonoBehaviour
                     }
                 }
 
-                _gripperPos = _gripperStart;  // reset pos
+                // reset pos
+                _gripperPos = _gripperStart;  
+                UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
                 break;
         }
 
@@ -113,8 +114,8 @@ public class StimServer : MonoBehaviour
         
     }
 
-    // update gripper position
     void UpdatePos(string data)
+    // update gripper position
     {
         var dataElements = data.Split(',');
         _gripperPos = new Vector3(float.Parse(dataElements[0]), float.Parse(dataElements[1]),
@@ -136,18 +137,25 @@ public class StimServer : MonoBehaviour
             QRCodePose = new Pose(DummyQR.transform.position, DummyQR.transform.rotation);
             UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
             QRCodeFrame.transform.SetPositionAndRotation(GripperPose.position, GripperPose.rotation);
+            Debug.Log("Using simulated QR code");
         }
         else
         {
             // actual QR code found
-            DummyQR.transform.localScale = new Vector3(0, 0, 0);
             _qrCode = QrCodesManager.GetList()[0];
             _qrCoords = _qrCode.SpatialGraphNodeId;
+
             SpatialGraphNode coordinateSystem = SpatialGraphNode.FromStaticNodeId(_qrCoords);
             coordinateSystem.TryLocate(FrameTime.OnUpdate, out QRCodePose);
             UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
             QRCodeFrame.transform.SetPositionAndRotation(GripperPose.position, GripperPose.rotation);
-            /*QrCodesManager.StopQRTracking();*/
+
+            // destroy helper objects
+            /*QrCodesManager.StopQRTracking();
+            Destroy(QrCodesManager);*/
+            Destroy(DummyQR);
+            Destroy(QRCodeFrame);
+            _qrFound = true;
         }
     }
 }

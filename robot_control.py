@@ -1,8 +1,34 @@
 # Libraries
+from math import cos, pi, sin
+
 import numpy as np
+import pygame
 from reachy_sdk import ReachySDK
 from reachy_sdk.trajectory import goto
 from reachy_sdk.trajectory.interpolation import InterpolationMode
+
+
+def rot_mat(q, direction):
+    """Create rotation matrix based on angle and rotation direction
+
+    Args:
+        q (double): angle
+        direction (st)): axis label
+
+    Returns:
+        np.array: [R11 R12 R13
+                   R21 R22 R23
+                   R31 R32]
+    """
+    if direction == "x":
+        R = np.array([[1, 0, 0], [0, cos(q), -sin(q)], [0, sin(q), cos(q)]])
+    elif direction == "y":
+        R = np.array([[cos(q), 0, sin(q)], [0, 1, 0], [-sin(q), 0, cos(q)]])
+    elif direction == "z":
+        R = np.array([[cos(q), -sin(q), 0], [sin(q), cos(q), 0], [0, 0, 1]])
+    else:
+        R = np.eye(3)
+    return R
 
 
 class ReachyRobot:
@@ -17,7 +43,7 @@ class ReachyRobot:
         (-45, 45),
         (-45, 45),
     ]
-    arm_joints = [
+    joint_names = [
         "r_shoulder_pitch",
         "r_shoulder_roll",
         "r_arm_yaw",
@@ -31,6 +57,8 @@ class ReachyRobot:
     parallel_gripper = np.array(
         [[-0.153, -0.027, -0.988], [-0.009, 1, -0.026], [0.988, 0.005, -0.153]]
     )  # parallel to table
+    motor_step_speed = 0.002  # m/step
+    motor_update_time_ms = 20  # ms
 
     def __init__(self, reachy_ip, logger):
         """Create robot object by connecting to IP address
@@ -189,3 +217,63 @@ class ReachyRobot:
         initial_joints = self.get_joints()[0:7]  # ignore gripper
         final_joints = self.reachy.r_arm.inverse_kinematics(goal_pose, initial_joints)
         return self.move_arm_joints(final_joints, speed)
+
+    def move_continuously(self, direction, pose):
+        """Update motor goals to move a small step in a given direction
+
+        Args:
+            direction (list): [x, y, z]
+            pose (np.array): [R11 R12 R13 Tx
+                              R21 R22 R23 Ty
+                              R31 R32 R33 Tz
+                              0   0   0   1]
+
+        Returns:
+            np.array: 4x4 pose matrix
+        """
+        joints = self.get_joints()[0:7]  # ignore gripper
+
+        # update and align with forearm
+        nxt_pose = pose.copy()
+        nxt_pose[0:3, 0:3] = self.get_forearm_orientation(joints)
+
+        for i, axis in enumerate(direction):
+            nxt_pose[i, 3] += axis * self.motor_step_speed
+
+        nxt_joints = self.reachy.r_arm.inverse_kinematics(nxt_pose, joints)
+        # set joint goals if valid
+        if self.check_arm_joint_limits(nxt_joints):
+            self.reachy.r_arm.r_shoulder_pitch.goal_position = nxt_joints[0]
+            self.reachy.r_arm.r_shoulder_roll.goal_position = nxt_joints[1]
+            self.reachy.r_arm.r_arm_yaw.goal_position = nxt_joints[2]
+            self.reachy.r_arm.r_elbow_pitch.goal_position = nxt_joints[3]
+            self.reachy.r_arm.r_forearm_yaw.goal_position = nxt_joints[4]
+            self.reachy.r_arm.r_wrist_pitch.goal_position = nxt_joints[5]
+            self.reachy.r_arm.r_wrist_roll.goal_position = nxt_joints[6]
+        else:
+            nxt_pose = pose.copy()
+
+        # wait for move
+        t0 = pygame.time.get_ticks()
+        while pygame.time.get_ticks() - t0 < self.motor_update_time_ms:
+            continue
+
+        return nxt_pose
+
+    def get_forearm_orientation(self, angles):
+        """Get rotation matrix for forearm orientation
+
+        Args:
+            angles (list): list of joint angles
+
+        Returns:
+            np.array: [R11, R12, R13,
+                       R21, R22, R23,
+                       R31, R32, R33]
+        """
+        R01 = rot_mat(angles[0] / 180 * pi, "y")
+        R12 = rot_mat(angles[1] / 180 * pi, "x")
+        R23 = rot_mat(angles[2] / 180 * pi, "z")
+        R34 = rot_mat(angles[3] / 180 * pi, "y")
+        R45 = rot_mat(angles[4] / 180 * pi, "z")
+        return np.matmul(R01, np.matmul(R12, np.matmul(R23, np.matmul(R34, R45))))
