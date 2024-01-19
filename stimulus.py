@@ -58,5 +58,5 @@ class StimController:
     def end_run(self):
         """Reset stimuli and close connection"""
 
-        self.setup_stim([0, 0, 0, 0])
+        self.setup_stim([0, 0, 0, 0, 0])
         self.socket.close()

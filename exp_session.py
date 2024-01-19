@@ -7,7 +7,7 @@ import coloredlogs
 import numpy as np
 import pygame
 
-from robot_control import ReachyRobot
+from robot_control import ReachyRobot, SimRobot
 from stimulus import StimController
 
 # Experiment parameters
@@ -27,9 +27,15 @@ CMD_MAP = {
 FOLDER = r"C:\Users\Kirill Kokorin\Documents\Data\Robot_control\Logs"
 
 # Stimulus
-FREQS = [14, 15, 17, 18]  # grab something from literature
+FREQS = [
+    14,
+    15,
+    17,
+    18,
+    20,
+]  # top, bottom, left, right, middle grab something from literature
 HOLOLENS_IP = "10.15.254.106"  # HoloLens
-# HOLOLENS_IP = "127.0.0.1"  # UnitySim
+HOLOLENS_IP = "127.0.0.1"  # UnitySim
 
 # Robot
 REACHY_WIRED = "169.254.238.100"
@@ -52,7 +58,13 @@ if __name__ == "__main__":
     main_logger = logging.getLogger(__name__)
 
     # Setup comms
-    reachy_robot = ReachyRobot(REACHY_WIRED, main_logger)
+    try:
+        reachy_robot = ReachyRobot(REACHY_WIRED, main_logger)
+    except Exception as e:
+        main_logger.critical("Couldn't connect to Reachy: %s" % e)
+        main_logger.critical("Using simulated robot")
+        reachy_robot = SimRobot()
+
     unity_game = StimController(HOLOLENS_IP, main_logger)
 
     # Generate trials
@@ -83,7 +95,7 @@ if __name__ == "__main__":
                 unity_game.move_stim(ef_coords)
                 last_stim_update_ms = pygame.time.get_ticks()
 
-        unity_game.setup_stim([0, 0, 0, 0])
+        unity_game.setup_stim([0, 0, 0, 0, 0])
         reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
 
     # Close unity app

@@ -4,8 +4,8 @@ public class StimBehaviour : MonoBehaviour
 {
     public StimServer Server;       // comms with python
     public Vector3 Offset;          // gripper offset
-    public int BlockIndex;          // t, b, l, r
-    const float MaxSize = 0.08f;    // m
+    public int BlockIndex;          // t, b, l, r.m
+    const float MaxSize = 0.052f;    // m
     
     void Start()
     // init stim

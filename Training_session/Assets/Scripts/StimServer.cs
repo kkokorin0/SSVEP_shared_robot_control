@@ -17,7 +17,7 @@ public class StimServer : MonoBehaviour
 
     // stimulus
     public float StartTime;
-    public float[] Freqs = {0, 0, 0, 0}; //t, b, l, r
+    public float[] Freqs = {0, 0, 0, 0, 0}; //t, b, l, r, m
 
     // movement
     private Vector3 _gripperStart = new(0.199f, -0.311f, -0.283f);
@@ -131,6 +131,7 @@ public class StimServer : MonoBehaviour
     void Update()
     {
         // look for QR code and setup global coords
+        if (_qrFound) return;
         if (QrCodesManager.GetList().Count == 0)
         {
             // use simulated QR code

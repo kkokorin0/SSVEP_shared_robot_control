@@ -32,7 +32,8 @@ def rot_mat(q, direction):
 
 
 class ReachyRobot:
-    # Reachy parameters
+    """Control Reachy robot using ReachySDK via TCP/IP"""
+
     temp_limits = (45, 55)  # (fan on, motor shutdown)
     joint_limits = [
         (-180, 90),
@@ -277,3 +278,55 @@ class ReachyRobot:
         R34 = rot_mat(angles[3] / 180 * pi, "y")
         R45 = rot_mat(angles[4] / 180 * pi, "z")
         return np.matmul(R01, np.matmul(R12, np.matmul(R23, np.matmul(R34, R45))))
+
+
+class SimRobot(ReachyRobot):
+    """Simulate Reachy data for testing"""
+
+    ef_start_pos = [0.311, -0.199, -0.283]
+
+    def __init__(self):
+        return
+
+    def turn_on(self):
+        return
+
+    def turn_off(self, pos=None, speed=None, safely=False):
+        return
+
+    def move_arm_joints(self, joint_angles, duration):
+        return
+
+    def get_pose(self):
+        """Generate pose matrix from starting position
+
+        Returns:
+            pose (np.array): [R11 R12 R13 Tx
+                              R21 R22 R23 Ty
+                              R31 R32 R33 Tz
+                              0   0   0   1]
+        """
+        pose = np.eye(4)
+        for i, coord in enumerate(self.ef_start_pos):
+            pose[i, 3] = coord
+        return pose
+
+    def move_continuously(self, direction, pose):
+        """Update pose coordinates based on direction
+
+        Args:
+            direction (list): [x,y,z] unit vector
+            pose (np.array): 4x4 pose matrix
+
+        Returns:
+            np.array: 4x4 pose matrix
+        """
+        nxt_pose = pose.copy()
+        for i, axis in enumerate(direction):
+            nxt_pose[i, 3] += axis * self.motor_step_speed
+
+        # wait for move
+        t0 = pygame.time.get_ticks()
+        while pygame.time.get_ticks() - t0 < self.motor_update_time_ms:
+            continue
+        return nxt_pose
