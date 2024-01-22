@@ -107,6 +107,11 @@ public class StimServer : MonoBehaviour
                 _gripperPos = _gripperStart;  
                 UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
                 break;
+
+            case "quit":
+                Application.Quit();
+                break;
+
         }
 
         // echo msg as response

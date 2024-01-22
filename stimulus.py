@@ -56,7 +56,6 @@ class StimController:
         )
 
     def end_run(self):
-        """Reset stimuli and close connection"""
-
+        """Turn off the app"""
         self.setup_stim([0, 0, 0, 0, 0])
-        self.socket.close()
+        self.send_data("quit: ", get_response=False)
