@@ -15,7 +15,7 @@ from stimulus import StimController
 P_ID = 99
 N_TRIALS = 1
 SAMPLE_T_MS = 200
-INIT_MS = 10000
+INIT_MS = 1000  # 10000
 PROMPT_MS = 2000
 DELAY_MS = 1000
 TRIAL_MS = 3000
@@ -39,7 +39,8 @@ FREQS = [
     11,
     13,
 ]  # top, bottom, left, right, middle (Hz)
-HOLOLENS_IP = "10.15.254.106"  # HoloLens
+# HOLOLENS_IP = "10.13.159.56" # HoloLens
+# HOLOLENS_IP = "10.15.254.106"
 HOLOLENS_IP = "127.0.0.1"  # UnitySim
 
 # Robot
@@ -72,7 +73,9 @@ if __name__ == "__main__":
     marker_info = StreamInfo("MarkerStream", "Markers", 1, 0, "string", session_id)
     marker_stream = StreamOutlet(marker_info)
     unity_game.setup_stim([0, 0, 0, 0, 0])
+
     marker_stream.push_sample(["start run"])
+    main_logger.warning("Start run")
     pygame.time.delay(INIT_MS)
 
     # Generate trials
@@ -119,3 +122,4 @@ if __name__ == "__main__":
     # Close unity app
     unity_game.end_run()
     marker_stream.push_sample(["end run"])
+    main_logger.warning("End run")

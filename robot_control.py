@@ -255,10 +255,7 @@ class ReachyRobot:
             nxt_pose = pose.copy()
 
         # wait for move
-        t0 = pygame.time.get_ticks()
-        while pygame.time.get_ticks() - t0 < self.motor_update_time_ms:
-            continue
-
+        pygame.time.delay(self.motor_update_time_ms)
         return nxt_pose
 
     def get_forearm_orientation(self, angles):
@@ -326,7 +323,5 @@ class SimRobot(ReachyRobot):
             nxt_pose[i, 3] += axis * self.motor_step_speed
 
         # wait for move
-        t0 = pygame.time.get_ticks()
-        while pygame.time.get_ticks() - t0 < self.motor_update_time_ms:
-            continue
+        pygame.time.delay(self.motor_update_time_ms)
         return nxt_pose

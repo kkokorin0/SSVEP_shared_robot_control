@@ -50,7 +50,6 @@ class StimController:
         Args:
             ef_coords (np.array): [x,y,z] coordinates of end-effector
         """
-        # Neet to update to match HoloLens coordinate system
         self.send_data(
             "move:%.3f,%.3f,%.3f" % (ef_coords[0], ef_coords[1], ef_coords[2])
         )

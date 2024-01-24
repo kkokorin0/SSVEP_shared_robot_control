@@ -8,33 +8,42 @@ using Microsoft.MixedReality.OpenXR;
 using Microsoft.MixedReality.SampleQRCodes;
 
 public class StimServer : MonoBehaviour
-{   // server
+{   
+    /* Control the position and frequency of flashing SSVEP stimuli based on
+       data received from Python client via TCP/IP. The stimuli are designed to appear
+       above a robotic arm gripper that is controlled by the client. Gripper
+       coordinates are mapped to HoloLens coordinates using a QR code placed in
+       the environment and aligned to the robot. */
+
+    // Comms with Python client
     private int _connectionPort = 25001;
     TcpListener _server;
     TcpClient _client;
     Thread _thread;
     bool _running;
+    private bool _quitApp = false; // app quit flag
 
-    // stimulus
-    public float StartTime;
-    public float[] Freqs = {0, 0, 0, 0, 0}; //t, b, l, r, m
+    // Stimulus
+    public float StartTime; // start flashing
+    public float[] Freqs = {0, 0, 0, 0, 0}; // frequency (Hz) by direction [t, b, l, r, m]
 
-    // movement
-    private Vector3 _gripperStart = new(0.199f, -0.311f, -0.283f);
-    private Vector3 _robotToQR = new(-0.182f, 0.378f, 0.414f);
-    private Vector3 _gripperPos;
-    public Pose GripperPose;
+    // Robot movement
+    private Vector3 _gripperStart = new(0.199f, -0.311f, -0.283f); // gripper start position
+    private Vector3 _robotToQR = new(-0.182f, 0.378f, 0.414f); // QR position relative to robot
+    private Vector3 _gripperPos; // dynamic gripper position relative to robot
+    public Pose GripperPose; // gripper pose in HoloLens coordinates
 
-    // QR code tracking
+    // QR code tracking for coordinate transformation
     public QRCodesManager QrCodesManager;
     private Microsoft.MixedReality.QR.QRCode _qrCode;
     private Guid _qrCoords;
     private bool _qrFound = false;
     public Pose QRCodePose;
-    public GameObject QRCodeFrame;
-    public GameObject DummyQR;
-
+    public GameObject QRCodeFrame; // visualise position with axes
+    public GameObject DummyQR; // simulate QR code if running in editor
+    
     void Start()
+    // Setup initial stimulus and comms
     {
         StartTime = Time.time;
         _gripperPos = _gripperStart;
@@ -49,7 +58,8 @@ public class StimServer : MonoBehaviour
         _thread.Start();
     }
 
-    void GetData()
+    void GetData() 
+    // Get data from Python client via TCP/IP
     {
         // create the server
         _server = new TcpListener(IPAddress.Any, _connectionPort);
@@ -68,6 +78,7 @@ public class StimServer : MonoBehaviour
     }
 
     void Connection()
+    // Read data from Python and update stimulus
     {
         // read data from the network stream
         var nwStream = _client.GetStream();
@@ -88,6 +99,7 @@ public class StimServer : MonoBehaviour
         switch (msgArray[0])
         {
             case "move":
+                // move based on new coordinates
                 UpdatePos(msgArray[1]);
                 UpdateGripperPose(QRCodePose, _robotToQR, _gripperPos);
                 break;
@@ -109,7 +121,7 @@ public class StimServer : MonoBehaviour
                 break;
 
             case "quit":
-                Application.Quit();
+                _quitApp = true;
                 break;
 
         }
@@ -120,7 +132,7 @@ public class StimServer : MonoBehaviour
     }
 
     void UpdatePos(string data)
-    // update gripper position
+    // Update simulated gripper coordinates
     {
         var dataElements = data.Split(',');
         _gripperPos = new Vector3(float.Parse(dataElements[0]), float.Parse(dataElements[1]),
@@ -128,14 +140,19 @@ public class StimServer : MonoBehaviour
     }
     
     void UpdateGripperPose(Pose QRPose, Vector3 RobotOrigin, Vector3 GripperPos)
+    // Update gripper rotation and position in HoloLens frame
     {
         var gripperPos = QRPose.position + QRPose.rotation * (RobotOrigin + GripperPos);
         GripperPose = new Pose(gripperPos, QRPose.rotation);
     }
     
     void Update()
+    // look for QR code and setup global coords
     {
-        // look for QR code and setup global coords
+        if (_quitApp)
+        {
+            Application.Quit();
+        }
         if (_qrFound) return;
         if (QrCodesManager.GetList().Count == 0)
         {
@@ -161,7 +178,7 @@ public class StimServer : MonoBehaviour
             Destroy(QrCodesManager);*/
             Destroy(DummyQR);
             Destroy(QRCodeFrame);
-            _qrFound = true;
+            /*_qrFound = true;*/
         }
     }
 }
