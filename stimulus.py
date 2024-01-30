@@ -36,12 +36,14 @@ class StimController:
         except Exception as e:
             self.logger.critical(f"An error occurred when sending message: {e}")
 
-    def setup_stim(self, freqs):
-        """Reset stimulus to initial state
+    def setup_stim(self, freqs, pos):
+        """Reset stimuli frequencies and position
 
         Args:
-            freqs (np.array): array of stimulus frequencies
+            freqs (list): stimulus frequencies
+            pos (list): [x,y,z] gripper coordinates
         """
+        self.move_stim(pos)
         self.send_data("reset:%s" % ",".join("%.3f" % f for f in freqs))
 
     def move_stim(self, ef_coords):
@@ -56,5 +58,4 @@ class StimController:
 
     def end_run(self):
         """Turn off the app"""
-        self.setup_stim([0, 0, 0, 0, 0])
         self.send_data("quit: ", get_response=False)

@@ -39,14 +39,14 @@ FREQS = [
     11,
     13,
 ]  # top, bottom, left, right, middle (Hz)
-# HOLOLENS_IP = "10.13.159.56" # HoloLens
-# HOLOLENS_IP = "10.15.254.106"
-HOLOLENS_IP = "127.0.0.1"  # UnitySim
+HOLOLENS_IP = "10.13.144.90"  # HoloLens
+# HOLOLENS_IP = "127.0.0.1"  # UnitySim
 
 # Robot
 REACHY_WIRED = "169.254.238.100"
 SETUP_POS = [10, 0, 0, -100, 0, -10, 0]  # starting joint angles
 REST_POS = [15, 0, 0, -75, 0, -30, 0]  # arm drop position
+X00_TRAIN = [0.199, -0.311, -0.283]  # initial gripper coords in Hololens frame
 MOVE_SPEED_S = 1  # arm movement duration
 
 if __name__ == "__main__":
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     # EEG recording
     marker_info = StreamInfo("MarkerStream", "Markers", 1, 0, "string", session_id)
     marker_stream = StreamOutlet(marker_info)
-    unity_game.setup_stim([0, 0, 0, 0, 0])
+    unity_game.setup_stim([0, 0, 0, 0, 0], X00_TRAIN)
 
     marker_stream.push_sample(["start run"])
     main_logger.warning("Start run")
@@ -91,12 +91,12 @@ if __name__ == "__main__":
         reachy_robot.move_arm_joints(SETUP_POS, MOVE_SPEED_S)
 
         # Highlight direction
-        unity_game.setup_stim([_c == trial for _c in CMDS])
+        unity_game.setup_stim([_c == trial for _c in CMDS], X00_TRAIN)
         marker_stream.push_sample(["prompt %s" % trial])
         pygame.time.delay(randint(PROMPT_MS, PROMPT_MS + DELAY_MS))
 
         # Start flashing
-        unity_game.setup_stim(FREQS)
+        unity_game.setup_stim(FREQS, X00_TRAIN)
         marker_stream.push_sample(["go %s" % trial])
         trial_start_ms = pygame.time.get_ticks()
         last_stim_update_ms = trial_start_ms
@@ -114,7 +114,7 @@ if __name__ == "__main__":
                 unity_game.move_stim(ef_coords)
                 last_stim_update_ms = pygame.time.get_ticks()
 
-        unity_game.setup_stim([0, 0, 0, 0, 0])
+        unity_game.setup_stim([0, 0, 0, 0, 0], X00_TRAIN)
         marker_stream.push_sample(["rest %s" % trial])
         reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
         pygame.time.delay(REST_MS)
