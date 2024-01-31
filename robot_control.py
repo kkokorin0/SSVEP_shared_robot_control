@@ -58,7 +58,7 @@ class ReachyRobot:
     parallel_gripper = np.array(
         [[-0.153, -0.027, -0.988], [-0.009, 1, -0.026], [0.988, 0.005, -0.153]]
     )  # parallel to table
-    motor_step_speed = 0.002  # m/step
+    motor_step_speed = 0.0010  # m/step
     motor_update_time_ms = 20  # ms
 
     def __init__(self, reachy_ip, logger):
@@ -233,10 +233,16 @@ class ReachyRobot:
             np.array: 4x4 pose matrix
         """
         joints = self.get_joints()[0:7]  # ignore gripper
-
-        # update and align with forearm
         nxt_pose = pose.copy()
-        nxt_pose[0:3, 0:3] = self.get_forearm_orientation(joints)
+
+        # update and align with floor/forearm
+        rotation = self.get_forearm_orientation(joints)
+        rotation[0, 0] = 0
+        rotation[1, 0] = 0
+        rotation[2, 0] = 1
+        rotation[2, 1] = 0
+        rotation[2, 2] = 0
+        nxt_pose[0:3, 0:3] = rotation
 
         for i, axis in enumerate(direction):
             nxt_pose[i, 3] += axis * self.motor_step_speed
