@@ -29,7 +29,7 @@ CMD_MAP = {
     "b": [-1, 0, 0],
 }
 CMDS = ["u", "d", "l", "r", "f"]
-FOLDER = r"C:\Users\kkokorin\Documents\Data\Robot_control\Logs"
+FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
 
 # Stimulus
 FREQS = [
@@ -61,6 +61,7 @@ if __name__ == "__main__":
     # Comms
     try:
         reachy_robot = ReachyRobot(REACHY_WIRED, main_logger)
+        reachy_robot.turn_off()
     except Exception as e:
         main_logger.critical("Couldn't connect to Reachy: %s" % e)
         main_logger.critical("Using simulated robot")
@@ -71,8 +72,10 @@ if __name__ == "__main__":
     # Markers
     marker_info = StreamInfo("MarkerStream", "Markers", 1, 0, "string", session_id)
     marker_stream = StreamOutlet(marker_info)
-    main_logger.critical("Connect to marker stream")
-    input()
+    main_logger.critical("Connected to marker stream and set-up lab recorder (y/n)?")
+    if input() != "y":
+        reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
+        main_logger.critical("Streams not set up, exiting")
     unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0])
 
     marker_stream.push_sample(["start run"])
