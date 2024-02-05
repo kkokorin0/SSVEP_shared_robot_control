@@ -51,14 +51,14 @@ MOVE_SPEED_S = 1  # arm movement duration
 if __name__ == "__main__":
     pygame.init()  # timer
 
-    # Logging
+    # logging
     session_id = str(P_ID) + "_" + datetime.now().strftime("%Y_%m_%d")
     log_file = FOLDER + "//" + session_id + ".log"
     logging.basicConfig(filename=log_file, level=logging.DEBUG)
     coloredlogs.install(level="WARNING", fmt="%(asctime)s,%(msecs)03d: %(message)s")
     main_logger = logging.getLogger(__name__)
 
-    # Comms
+    # comms
     try:
         reachy_robot = ReachyRobot(REACHY_WIRED, main_logger)
         reachy_robot.turn_off()
@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
     unity_game = StimController(HOLOLENS_IP, main_logger)
 
-    # Markers
+    # markers
     marker_info = StreamInfo("MarkerStream", "Markers", 1, 0, "string", session_id)
     marker_stream = StreamOutlet(marker_info)
     main_logger.critical("Connected to marker stream and set-up lab recorder (y/n)?")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     main_logger.warning("Start run")
     pygame.time.delay(INIT_MS)
 
-    # Generate trials
+    # generate trials
     seed(P_ID)
     trials = np.array([sample(CMDS, len(CMDS)) for _ in range(N_TRIALS)]).reshape(-1)
     main_logger.warning(trials)
@@ -90,31 +90,31 @@ if __name__ == "__main__":
     for t_i, trial in enumerate(trials):
         logging.warning("Running trial (%s) %d/%d" % (trial, t_i + 1, len(trials)))
 
-        # Setup robot
+        # setup robot
         reachy_robot.turn_on()
         reachy_robot.move_arm_joints(SETUP_POS, MOVE_SPEED_S)
         ef_pose = reachy_robot.get_pose()
         ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
 
-        # Highlight direction
+        # gighlight direction
         unity_game.setup_stim([_c == trial for _c in CMDS], ef_coords)
         marker_stream.push_sample(["prompt %s" % trial])
         pygame.time.delay(randint(PROMPT_MS, PROMPT_MS + DELAY_MS))
 
-        # Start flashing
+        # start flashing
         unity_game.setup_stim(FREQS, ef_coords)
         marker_stream.push_sample(["go %s" % trial])
         trial_start_ms = pygame.time.get_ticks()
         last_stim_update_ms = trial_start_ms
         while pygame.time.get_ticks() - trial_start_ms < TRIAL_MS:
-            # Move the robot
+            # move the robot
             direction = CMD_MAP[trial]
             ef_pose = reachy_robot.move_continuously(direction, ef_pose)
 
-            # Map from Reachy to HoloLens frame
+            # map from Reachy to HoloLens frame
             ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
 
-            # Update stimuli
+            # update stimuli
             if pygame.time.get_ticks() - last_stim_update_ms > SAMPLE_T_MS:
                 unity_game.move_stim(ef_coords)
                 last_stim_update_ms = pygame.time.get_ticks()
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
         pygame.time.delay(REST_MS)
 
-    # Close unity app
+    # close unity app
     unity_game.end_run()
     marker_stream.push_sample(["end run"])
     main_logger.warning("End run")
