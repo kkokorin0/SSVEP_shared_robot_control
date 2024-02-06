@@ -40,7 +40,7 @@ WINDOW_T = 1
 HARMONICS = [1, 2]
 
 # %% Load and epoch data
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Observation pilot\P99_S01"
+folder = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\sub-P98\ses-S001\eeg"
 plot_signals = False
 fmin, fmax = 1, 40
 ep_tmin, ep_tmax = 0, 2.5

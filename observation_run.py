@@ -13,13 +13,14 @@ from stimulus import StimController
 
 # Experiment parameters
 P_ID = 99
-N_TRIALS = 5
+N_TRIALS = 1
 SAMPLE_T_MS = 200
 INIT_MS = 10000
 PROMPT_MS = 2000
 DELAY_MS = 1000
-TRIAL_MS = 2500
+TRIAL_MS = 3600
 REST_MS = 2000
+OFFSET_MS = 1000
 CMD_MAP = {
     "u": [0, 0, 1],
     "d": [0, 0, -1],
@@ -39,7 +40,7 @@ FREQS = [
     11,
     13,
 ]  # top, bottom, left, right, middle (Hz)
-HOLOLENS_IP = "10.13.144.90"  # HoloLens
+HOLOLENS_IP = "192.168.137.228"  # HoloLens
 # HOLOLENS_IP = "127.0.0.1"  # UnitySim
 
 # Robot
@@ -94,9 +95,15 @@ if __name__ == "__main__":
         reachy_robot.turn_on()
         reachy_robot.move_arm_joints(SETUP_POS, MOVE_SPEED_S)
         ef_pose = reachy_robot.get_pose()
+
+        # start with an offset in the opposite direction
+        direction = CMD_MAP[trial]
+        offset_start_ms = pygame.time.get_ticks()
+        while pygame.time.get_ticks() - offset_start_ms < OFFSET_MS:
+            ef_pose = reachy_robot.move_continuously(-np.array(direction), ef_pose)
         ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
 
-        # gighlight direction
+        # highlight direction
         unity_game.setup_stim([_c == trial for _c in CMDS], ef_coords)
         marker_stream.push_sample(["prompt %s" % trial])
         pygame.time.delay(randint(PROMPT_MS, PROMPT_MS + DELAY_MS))
@@ -108,7 +115,6 @@ if __name__ == "__main__":
         last_stim_update_ms = trial_start_ms
         while pygame.time.get_ticks() - trial_start_ms < TRIAL_MS:
             # move the robot
-            direction = CMD_MAP[trial]
             ef_pose = reachy_robot.move_continuously(direction, ef_pose)
 
             # map from Reachy to HoloLens frame
