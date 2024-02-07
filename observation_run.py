@@ -14,7 +14,7 @@ from stimulus import StimController
 
 # experiment parameters
 P_ID = 99
-ONLINE_DECODING = False
+ONLINE_DECODING = True
 N_TRIALS = 1
 SAMPLE_T_MS = 200
 INIT_MS = 10000
@@ -45,12 +45,15 @@ SETUP_POS = [25, 0, 0, -110, 0, -10, 0]  # starting joint angles
 REST_POS = [15, 0, 0, -75, 0, -30, 0]  # arm drop position
 MOVE_SPEED_S = 1  # arm movement duration
 
-# recording
+# recording/decoding
 FS = 256  # sample rate (Hz)
+MAX_SAMPLES = 7680  # max samples to from stream
 N_CH = 9  # number of SSVEP channels
 FMIN = 1  # filter lower cutoff (Hz)
 FMAX = 40  # filter upper cutoff (Hz)
 FILTER_ORDER = 4  # filter order
+WINDOW_S = 1  # decoder window length (s)
+HARMONICS = [1, 2]  # signals to include in template
 
 if __name__ == "__main__":
     pygame.init()  # timer
@@ -65,7 +68,7 @@ if __name__ == "__main__":
     # comms
     try:
         reachy_robot = ReachyRobot(REACHY_WIRED, main_logger)
-        reachy_robot.turn_off()
+        reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
     except Exception as e:
         main_logger.critical("Couldn't connect to Reachy: %s" % e)
         main_logger.critical("Using simulated robot")
@@ -95,12 +98,14 @@ if __name__ == "__main__":
     main_logger.warning("Start run")
     pygame.time.delay(INIT_MS)
 
-    # setup online filter
+    # setup online filter and decoder
     if ONLINE_DECODING:
         bp_filter = BandpassFilter(FILTER_ORDER, FS, FMIN, FMAX, N_CH)
-        X_chunk, timesteps = eeg_stream.pull_chunk()
-        main_logger.warning("Pulled chunk (%d x %d)" % X_chunk.shape)
-        bp_filter.filter(X_chunk.T[:N_CH, :])
+        X_chunk, ts = eeg_stream.pull_chunk(max_samples=MAX_SAMPLES)
+        main_logger.warning("t=%.3fs pulled %d samples" % (ts[-1], len(X_chunk)))
+
+        bp_filter.filter(np.array(X_chunk).T[:N_CH, :])
+        decoder = Decoder(WINDOW_S, FS, HARMONICS, FREQS)
 
     # generate trials
     seed(P_ID)
@@ -136,9 +141,9 @@ if __name__ == "__main__":
         # create online buffer and clear stream
         if ONLINE_DECODING:
             trial_buffer = []
-            X_chunk, timesteps = eeg_stream.pull_chunk()
-            main_logger.warning("Pulled chunk (%d x %d)" % X_chunk.shape)
-            bp_filter.filter(X_chunk.T[:N_CH, :])
+            X_chunk, ts = eeg_stream.pull_chunk(max_samples=MAX_SAMPLES)
+            main_logger.warning("t=%.3fs pulled %d samples" % (ts[-1], len(X_chunk)))
+            bp_filter.filter(np.array(X_chunk).T[:N_CH, :])
 
         while pygame.time.get_ticks() - trial_start_ms < TRIAL_MS:
             # move the robot
@@ -147,15 +152,27 @@ if __name__ == "__main__":
             # map from Reachy to HoloLens frame
             ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
 
-            # update stimuli/get new EEG chunk
+            # update stimuli/decode EEG chunk
             if pygame.time.get_ticks() - last_stim_update_ms > SAMPLE_T_MS:
                 if ONLINE_DECODING:
-                    X_chunk, timesteps = eeg_stream.pull_chunk()
-                    main_logger.warning("Pulled chunk (%d x %d)" % X_chunk.shape)
-                    X_filtered = bp_filter.filter(X_chunk.T[:N_CH, :])
+                    X_chunk, ts = eeg_stream.pull_chunk(max_samples=MAX_SAMPLES)
+                    main_logger.warning(
+                        "t=%.3fs pulled %d samples" % (ts[-1], len(X_chunk))
+                    )
+
+                    # add filtered signal to buffer
+                    X_filtered = bp_filter.filter(np.array(X_chunk).T[:N_CH, :])
                     trial_buffer.append(X_filtered)
 
-                    # TODO add decoding
+                    # predict direction if buffer is full enough
+                    if np.concatenate(trial_buffer, axis=1).shape[1] > WINDOW_S * FS:
+                        buffer_window = np.concatenate(trial_buffer, axis=1)[
+                            :, -int(WINDOW_S * FS) :
+                        ]
+                        pred = CMDS[decoder.predict(buffer_window)]
+                        main_logger.warning(pred)
+                        marker_stream.push_sample(["pred %s" % pred])
+                        direction = CMD_MAP[pred]
 
                 unity_game.move_stim(ef_coords)
                 last_stim_update_ms = pygame.time.get_ticks()
