@@ -1,6 +1,7 @@
 import mne
 import numpy as np
 import pyxdf
+from scipy import signal
 from sklearn.cross_decomposition import CCA
 
 
@@ -117,3 +118,42 @@ class Decoder:
             int: index of best template
         """
         return np.argmax(self.score(X))
+
+
+class BandpassFilter:
+    """Online bandpass filter"""
+
+    def __init__(self, order, fs, fmin, fmax, n_ch):
+        """Setup filter coefficients and initialise
+
+        Args:
+            order (int): filter order
+            fs (int): sampling frequency
+            fmin (int): lower cutoff
+            fmax (int): upper cutoff
+            n_ch (int): number of channels
+        """
+        self.fs = fs
+        self.fmin = fmin
+        self.fmax = fmax
+        self.n_channels = n_ch
+        self.filter_sos = signal.butter(
+            N=order,
+            Wn=[fmin, fmax],
+            fs=fs,
+            btype="bandpass",
+            output="sos",
+        )
+        self.filter_z = np.zeros((self.filter_sos.shape[0], n_ch, 2))
+
+    def filter(self, X):
+        """Filter chunk of data and update filter state
+
+        Args:
+            X (np.array): EEG signal (n_channels, n_samples)
+
+        Returns:
+            np.array: filtered data (n_channels, n_samples)
+        """
+        filtered, self.filter_z = signal.sosfilt(self.filter_sos, X, zi=self.filter_z)
+        return filtered

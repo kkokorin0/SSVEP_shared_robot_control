@@ -6,7 +6,7 @@ import mne
 import numpy as np
 import seaborn as sns
 
-from decoding import Decoder, load_recording
+from decoding import BandpassFilter, Decoder, load_recording, signal
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -40,7 +40,7 @@ WINDOW_T = 1
 HARMONICS = [1, 2]
 
 # %% Load and epoch data
-folder = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\sub-P98\ses-S001\eeg"
+folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Observation pilot\P98_S01"
 plot_signals = False
 fmin, fmax = 1, 40
 ep_tmin, ep_tmax = 0, 2.5
@@ -153,3 +153,31 @@ axs.flatten()[4].set_xlabel(
 axs.flatten()[5].remove()
 sns.despine()
 fig.tight_layout()
+
+# %% Filtering comparison
+recording_len = 30 * FS
+filter_order = 4
+raw, events = load_recording(CH_NAMES, folder, file)
+recording = raw.get_data(SSVEP_CHS)
+
+# online filter
+bandpass = BandpassFilter(filter_order, FS, fmin, fmax, len(SSVEP_CHS))
+X_filt = []
+for ti_min in range(n_chunk, recording_len, n_chunk):
+    X_slice = recording[:, ti_min - n_chunk : ti_min]
+    X_filt.append(bandpass.filter(X_slice))
+X_filt_online = np.concatenate(X_filt, axis=1)
+
+# offline filter
+offline_filter = signal.butter(
+    N=filter_order, Wn=[fmin, fmax], fs=FS, btype="bandpass", output="sos"
+)
+X_filt_offline = signal.sosfilt(
+    offline_filter, recording[:, : X_filt_online.shape[1]], axis=1
+)
+
+fig, axs = plt.subplots(1, 3, figsize=(10, 3), sharex=True, sharey=True)
+axs[0].plot(X_filt_offline.T * 1e6)
+axs[1].plot(X_filt_online.T * 1e6)
+axs[2].plot((X_filt_offline - X_filt_online).T * 1e6)
+axs[0].set_ylim([100, -100])
