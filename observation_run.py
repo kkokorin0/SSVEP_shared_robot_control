@@ -6,13 +6,15 @@ from random import randint, sample, seed
 import coloredlogs
 import numpy as np
 import pygame
-from pylsl import StreamInfo, StreamOutlet
+from pylsl import StreamInfo, StreamInlet, StreamOutlet, resolve_byprop
 
+from decoding import BandpassFilter, Decoder
 from robot_control import ReachyRobot, SimRobot
 from stimulus import StimController
 
-# Experiment parameters
+# experiment parameters
 P_ID = 99
+ONLINE_DECODING = False
 N_TRIALS = 1
 SAMPLE_T_MS = 200
 INIT_MS = 10000
@@ -32,22 +34,23 @@ CMD_MAP = {
 CMDS = ["u", "d", "l", "r", "f"]
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
 
-# Stimulus
-FREQS = [
-    7,
-    8,
-    9,
-    11,
-    13,
-]  # top, bottom, left, right, middle (Hz)
+# stimulus
+FREQS = [7, 8, 9, 11, 13]  # top, bottom, left, right, middle (Hz)
 HOLOLENS_IP = "192.168.137.228"  # HoloLens
 # HOLOLENS_IP = "127.0.0.1"  # UnitySim
 
-# Robot
+# robot
 REACHY_WIRED = "169.254.238.100"  # Reachy
 SETUP_POS = [25, 0, 0, -110, 0, -10, 0]  # starting joint angles
 REST_POS = [15, 0, 0, -75, 0, -30, 0]  # arm drop position
 MOVE_SPEED_S = 1  # arm movement duration
+
+# recording
+FS = 256  # sample rate (Hz)
+N_CH = 9  # number of SSVEP channels
+FMIN = 1  # filter lower cutoff (Hz)
+FMAX = 40  # filter upper cutoff (Hz)
+FILTER_ORDER = 4  # filter order
 
 if __name__ == "__main__":
     pygame.init()  # timer
@@ -70,7 +73,7 @@ if __name__ == "__main__":
 
     unity_game = StimController(HOLOLENS_IP, main_logger)
 
-    # markers
+    # marker stream
     marker_info = StreamInfo("MarkerStream", "Markers", 1, 0, "string", session_id)
     marker_stream = StreamOutlet(marker_info)
     main_logger.critical("Connected to marker stream and set-up lab recorder (y/n)?")
@@ -79,9 +82,25 @@ if __name__ == "__main__":
         main_logger.critical("Streams not set up, exiting")
     unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0])
 
+    # find EEG stream
+    if ONLINE_DECODING:
+        main_logger.warning("Looking for EEG stream....")
+        eeg_streams = resolve_byprop("type", "EEG")
+        main_logger.critical("Resolved EEG stream %s" % str(eeg_streams[0].desc()))
+        eeg_stream = StreamInlet(eeg_streams[0])
+        eeg_stream.flush()
+        eeg_stream.pull_sample()
+
     marker_stream.push_sample(["start run"])
     main_logger.warning("Start run")
     pygame.time.delay(INIT_MS)
+
+    # setup online filter
+    if ONLINE_DECODING:
+        bp_filter = BandpassFilter(FILTER_ORDER, FS, FMIN, FMAX, N_CH)
+        X_chunk, timesteps = eeg_stream.pull_chunk()
+        main_logger.warning("Pulled chunk (%d x %d)" % X_chunk.shape)
+        bp_filter.filter(X_chunk.T[:N_CH, :])
 
     # generate trials
     seed(P_ID)
@@ -89,7 +108,7 @@ if __name__ == "__main__":
     main_logger.warning(trials)
 
     for t_i, trial in enumerate(trials):
-        logging.warning("Running trial (%s) %d/%d" % (trial, t_i + 1, len(trials)))
+        main_logger.warning("Running trial (%s) %d/%d" % (trial, t_i + 1, len(trials)))
 
         # setup robot
         reachy_robot.turn_on()
@@ -113,6 +132,14 @@ if __name__ == "__main__":
         marker_stream.push_sample(["go %s" % trial])
         trial_start_ms = pygame.time.get_ticks()
         last_stim_update_ms = trial_start_ms
+
+        # create online buffer and clear stream
+        if ONLINE_DECODING:
+            trial_buffer = []
+            X_chunk, timesteps = eeg_stream.pull_chunk()
+            main_logger.warning("Pulled chunk (%d x %d)" % X_chunk.shape)
+            bp_filter.filter(X_chunk.T[:N_CH, :])
+
         while pygame.time.get_ticks() - trial_start_ms < TRIAL_MS:
             # move the robot
             ef_pose = reachy_robot.move_continuously(direction, ef_pose)
@@ -120,8 +147,16 @@ if __name__ == "__main__":
             # map from Reachy to HoloLens frame
             ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
 
-            # update stimuli
+            # update stimuli/get new EEG chunk
             if pygame.time.get_ticks() - last_stim_update_ms > SAMPLE_T_MS:
+                if ONLINE_DECODING:
+                    X_chunk, timesteps = eeg_stream.pull_chunk()
+                    main_logger.warning("Pulled chunk (%d x %d)" % X_chunk.shape)
+                    X_filtered = bp_filter.filter(X_chunk.T[:N_CH, :])
+                    trial_buffer.append(X_filtered)
+
+                    # TODO add decoding
+
                 unity_game.move_stim(ef_coords)
                 last_stim_update_ms = pygame.time.get_ticks()
 
