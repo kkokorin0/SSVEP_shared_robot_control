@@ -15,7 +15,7 @@ from stimulus import StimController
 # experiment parameters
 P_ID = 99
 ONLINE_DECODING = False
-N_TRIALS = 1
+N_TRIALS = 10
 SAMPLE_T_MS = 200
 INIT_MS = 10000
 PROMPT_MS = 2000
@@ -50,7 +50,7 @@ QR_OFFSET = [0.03, -0.01, 0.02]  # fine-tune QR position
 
 # recording/decoding
 FS = 256  # sample rate (Hz)
-MAX_SAMPLES = 7680  # max samples to from stream
+MAX_SAMPLES = 7680  # max samples to pull from stream
 N_CH = 9  # number of SSVEP channels
 FMIN = 1  # filter lower cutoff (Hz)
 FMAX = 40  # filter upper cutoff (Hz)
