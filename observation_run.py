@@ -14,7 +14,7 @@ from stimulus import StimController
 
 # experiment parameters
 P_ID = 99
-ONLINE_DECODING = True
+ONLINE_DECODING = False
 N_TRIALS = 1
 SAMPLE_T_MS = 200
 INIT_MS = 10000
@@ -33,11 +33,13 @@ CMD_MAP = {
 }
 CMDS = ["u", "d", "l", "r", "f"]
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
+FOLDER = r"C:\Users\Kirill Kokorin\Documents\Data\Robot_control\Logs"
 
 # stimulus
 FREQS = [7, 8, 9, 11, 13]  # top, bottom, left, right, middle (Hz)
 HOLOLENS_IP = "192.168.137.228"  # HoloLens
-# HOLOLENS_IP = "127.0.0.1"  # UnitySim
+HOLOLENS_IP = "127.0.0.1"  # UnitySim
+STIM_DIST = 0.15  # distance from end-effector (m)
 
 # robot
 REACHY_WIRED = "169.254.238.100"  # Reachy
@@ -83,7 +85,7 @@ if __name__ == "__main__":
     if input() != "y":
         reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
         main_logger.critical("Streams not set up, exiting")
-    unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0])
+    unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0], 0)
 
     # find EEG stream
     if ONLINE_DECODING:
@@ -128,12 +130,12 @@ if __name__ == "__main__":
         ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
 
         # highlight direction
-        unity_game.setup_stim([_c == trial for _c in CMDS], ef_coords)
+        unity_game.setup_stim([_c == trial for _c in CMDS], ef_coords, STIM_DIST)
         marker_stream.push_sample(["prompt %s" % trial])
         pygame.time.delay(randint(PROMPT_MS, PROMPT_MS + DELAY_MS))
 
         # start flashing
-        unity_game.setup_stim(FREQS, ef_coords)
+        unity_game.setup_stim(FREQS, ef_coords, STIM_DIST)
         marker_stream.push_sample(["go %s" % trial])
         trial_start_ms = pygame.time.get_ticks()
         last_stim_update_ms = trial_start_ms
@@ -177,7 +179,7 @@ if __name__ == "__main__":
                 unity_game.move_stim(ef_coords)
                 last_stim_update_ms = pygame.time.get_ticks()
 
-        unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0])
+        unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0], 0)
         marker_stream.push_sample(["rest %s" % trial])
         reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
         pygame.time.delay(REST_MS)

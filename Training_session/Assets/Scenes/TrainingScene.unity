@@ -194,7 +194,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -0.1
+      value: -0.15
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.y
@@ -276,7 +276,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Server: {fileID: 1628850355}
-  Offset: {x: 0, y: 0, z: -0.1}
   BlockIndex: 1
 --- !u!1001 &793623293
 PrefabInstance:
@@ -304,7 +303,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.1
+      value: 0.15
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.y
@@ -388,7 +387,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.1
+      value: -0.15
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.z
@@ -1053,6 +1052,12 @@ MonoBehaviour:
   - 9
   - 11
   - 13
+  StimOffsets:
+  - {x: 0, y: 0.15, z: 0}
+  - {x: 0, y: -0.15, z: 0}
+  - {x: -0.15, y: 0, z: 0}
+  - {x: 0.15, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
   GripperPose:
     position: {x: 0, y: 0, z: 0}
     rotation: {x: 0, y: 0, z: 0, w: 0}
@@ -1085,7 +1090,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Server: {fileID: 1628850355}
-  Offset: {x: -0.1, y: 0, z: 0}
   BlockIndex: 2
 --- !u!1001 &1658763652
 PrefabInstance:
@@ -1190,7 +1194,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Server: {fileID: 1628850355}
-  Offset: {x: 0, y: 0, z: 0}
   BlockIndex: 4
 --- !u!1 &1714766901
 GameObject:
@@ -1293,7 +1296,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Server: {fileID: 1628850355}
-  Offset: {x: 0.1, y: 0, z: 0}
   BlockIndex: 3
 --- !u!1 &1911157034
 GameObject:
@@ -1430,7 +1432,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.1
+      value: 0.15
       objectReference: {fileID: 0}
     - target: {fileID: 8495264671871735429, guid: 587bac2be4f480d4a9aaf9f777a66052, type: 3}
       propertyPath: m_LocalPosition.z
@@ -1503,7 +1505,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   Server: {fileID: 1628850355}
-  Offset: {x: 0, y: 0, z: 0.1}
   BlockIndex: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

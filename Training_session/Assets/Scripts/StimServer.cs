@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -26,6 +27,8 @@ public class StimServer : MonoBehaviour
     // Stimulus
     public float StartTime; // start flashing
     public float[] Freqs = { 0, 0, 0, 0, 0 }; // frequency (Hz) by direction [t, b, l, r, m]
+    private float _maxOffset = 0.15f; // maximum stimulus offset from gripper
+    public List<Vector3> StimOffsets; // offset of each stimulus from gripper
 
     // Robot movement
     private Vector3 _gripperStart = new(0.199f, -0.311f, -0.283f); // gripper start position
@@ -41,12 +44,22 @@ public class StimServer : MonoBehaviour
     public GameObject QRCodeFrame; // QR frame axes
     public GameObject DummyQR; // visualise dummy QR code
 
+    void SetOffsets(float offset)
+        // Set the position of each stimulus relative to the gripper
+    {
+        StimOffsets[0] = new Vector3(0, 0, offset);  // t
+        StimOffsets[1] = new Vector3(0, 0, -offset); // b
+        StimOffsets[2] = new Vector3(-offset, 0, 0); // l
+        StimOffsets[3] = new Vector3(offset, 0, 0);  // r
+    }
+
     void Start()
         // Setup initial stimulus and comms
     {
         StartTime = Time.time;
         _gripperPos = _gripperStart;
         GripperPose = new Pose(_gripperPos, Quaternion.identity);
+        SetOffsets(_maxOffset);
 
         // visualise dummy QR and start detection
         QRCodePose = new Pose(DummyQR.transform.position, DummyQR.transform.rotation);
@@ -101,6 +114,11 @@ public class StimServer : MonoBehaviour
 
         switch (msgArray[0])
         {
+            case "setup":
+                // set stim offsets
+                if (float.TryParse(msgArray[1], out _maxOffset)) SetOffsets(_maxOffset);
+                break;
+
             case "move":
                 // move based on new coordinates
                 UpdatePos(msgArray[1]);

@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 public class StimBehaviour : MonoBehaviour
 {
@@ -7,15 +9,14 @@ public class StimBehaviour : MonoBehaviour
        be used to control the directional motion of the gripper. */
 
     public StimServer Server;       // stimulus controller
-    public Vector3 Offset;          // stimulus offset relative to gripper
     public int BlockIndex;          // which direction the stimulus represents
     const float MaxSize = 0.052f;   // stimulus size
     private Renderer _stim_render;  // stimulus material renderer
-    
+
     void Start()
     // Setup stimulus relative to gripper position
     {
-        transform.localPosition = Server.GripperPose.position + Offset;
+        transform.localPosition = Server.GripperPose.position + Server.StimOffsets[BlockIndex];
         transform.localScale = new Vector3(MaxSize, MaxSize, MaxSize);
         _stim_render = gameObject.GetComponent<Renderer>();
     }
@@ -25,7 +26,7 @@ public class StimBehaviour : MonoBehaviour
     // Update stimulus position and transparency based on StimServer parameters
     {
         // locate stimulus relative to gripper
-        transform.position = Server.GripperPose.position + Server.GripperPose.rotation * Offset;
+        transform.position = Server.GripperPose.position + Server.GripperPose.rotation * Server.StimOffsets[BlockIndex];
         transform.rotation = Server.GripperPose.rotation;
         var stimColor = _stim_render.material.color;
 
