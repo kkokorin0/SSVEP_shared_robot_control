@@ -33,19 +33,20 @@ CMD_MAP = {
 }
 CMDS = ["u", "d", "l", "r", "f"]
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
-FOLDER = r"C:\Users\Kirill Kokorin\Documents\Data\Robot_control\Logs"
+# FOLDER = r"C:\Users\Kirill Kokorin\Documents\Data\Robot_control\Logs"
 
 # stimulus
 FREQS = [7, 8, 9, 11, 13]  # top, bottom, left, right, middle (Hz)
-HOLOLENS_IP = "192.168.137.228"  # HoloLens
-HOLOLENS_IP = "127.0.0.1"  # UnitySim
 STIM_DIST = 0.15  # distance from end-effector (m)
+HOLOLENS_IP = "192.168.137.228"  # HoloLens
+# HOLOLENS_IP = "127.0.0.1"  # UnitySim
 
 # robot
 REACHY_WIRED = "169.254.238.100"  # Reachy
 SETUP_POS = [25, 0, 0, -110, 0, -10, 0]  # starting joint angles
 REST_POS = [15, 0, 0, -75, 0, -30, 0]  # arm drop position
 MOVE_SPEED_S = 1  # arm movement duration
+QR_OFFSET = [0.03, -0.01, 0.02]  # fine-tune QR position
 
 # recording/decoding
 FS = 256  # sample rate (Hz)
@@ -127,7 +128,11 @@ if __name__ == "__main__":
         offset_start_ms = pygame.time.get_ticks()
         while pygame.time.get_ticks() - offset_start_ms < OFFSET_MS:
             ef_pose = reachy_robot.move_continuously(-np.array(direction), ef_pose)
-        ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
+        ef_coords = [
+            -ef_pose[1, 3] - QR_OFFSET[1],
+            -ef_pose[0, 3] - QR_OFFSET[0],
+            ef_pose[2, 3] + QR_OFFSET[2],
+        ]
 
         # highlight direction
         unity_game.setup_stim([_c == trial for _c in CMDS], ef_coords, STIM_DIST)
@@ -152,7 +157,11 @@ if __name__ == "__main__":
             ef_pose = reachy_robot.move_continuously(direction, ef_pose)
 
             # map from Reachy to HoloLens frame
-            ef_coords = [-ef_pose[1, 3], -ef_pose[0, 3], ef_pose[2, 3]]
+            ef_coords = [
+                -ef_pose[1, 3] - QR_OFFSET[1],
+                -ef_pose[0, 3] - QR_OFFSET[0],
+                ef_pose[2, 3] + QR_OFFSET[2],
+            ]
 
             # update stimuli/decode EEG chunk
             if pygame.time.get_ticks() - last_stim_update_ms > SAMPLE_T_MS:
