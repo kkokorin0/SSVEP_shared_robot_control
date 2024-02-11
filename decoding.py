@@ -5,6 +5,28 @@ from scipy import signal
 from sklearn.cross_decomposition import CCA
 
 
+def extract_events(events, labels):
+    """Extract all events that contain a substring from the start to end of a run
+
+    Args:
+        events (list): list of [timestep, 0, event]
+        labels (list of str): accepted substrings in the event label
+
+    Returns:
+        filtered_events (list): list of [timestep, 0, event]
+    """
+    filtered_events = []
+    valid_events = False
+    for ts, _, event in events:
+        if valid_events and any([_l in event for _l in labels]):
+            filtered_events.append([ts, 0, event])
+        elif event == "start run":
+            valid_events = True
+        elif event == "end run":
+            valid_events = False
+    return filtered_events
+
+
 def load_recording(ch_names, folder, file):
     """Load xdf recordings into mne raw structure and events array
 

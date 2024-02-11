@@ -6,7 +6,7 @@ import mne
 import numpy as np
 import seaborn as sns
 
-from decoding import BandpassFilter, Decoder, load_recording, signal
+from decoding import BandpassFilter, Decoder, extract_events, load_recording, signal
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -30,7 +30,7 @@ CH_NAMES = [
     "FC1",
     "FCz",
     "FC2",
-]  # TODO check these
+]
 SSVEP_CHS = CH_NAMES[:9]
 DIRECTIONS = ["u", "d", "l", "r", "f"]
 STIM_FS = [7, 8, 9, 11, 13]
@@ -40,10 +40,10 @@ WINDOW_T = 1
 HARMONICS = [1, 2]
 
 # %% Load and epoch data
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Observation pilot\P98_S01"
+folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Observation pilot\P99_S02"
 plot_signals = False
 fmin, fmax = 1, 40
-ep_tmin, ep_tmax = 0, 2.5
+ep_tmin, ep_tmax = 0, 3.6
 
 X, y = [], []
 for file in os.listdir(folder):
@@ -57,14 +57,10 @@ for file in os.listdir(folder):
             raw.compute_psd(fmin=1, fmax=40).plot()
 
         # epoch go trials
-        go_events = {"go " + _d for _d in DIRECTIONS}
-        filtered_events = [
-            [e[0], e[1], ord(e[2][-1])] for e in events if e[2] in go_events
-        ]
-
+        go_events = extract_events(events, ["go"])
         epochs = mne.Epochs(
             raw,
-            filtered_events,
+            [[_e[0], 0, ord(_e[2][-1])] for _e in go_events],
             baseline=None,
             tmin=ep_tmin,
             tmax=ep_tmax,
@@ -157,6 +153,8 @@ fig.tight_layout()
 # %% Filtering comparison
 recording_len = 30 * FS
 filter_order = 4
+file = r"sub-P99_ses-S2_task-online_run-002_eeg.xdf"
+
 raw, events = load_recording(CH_NAMES, folder, file)
 recording = raw.get_data(SSVEP_CHS)
 
@@ -180,6 +178,67 @@ fig, axs = plt.subplots(1, 3, figsize=(10, 3), sharex=True, sharey=True)
 axs[0].plot(X_filt_offline.T * 1e6)
 axs[1].plot(X_filt_online.T * 1e6)
 axs[2].plot((X_filt_offline - X_filt_online).T * 1e6)
-axs[0].set_ylim([100, -100])
-axs[0].set_xlim([0, 2560])
+[axs[_i].set_title(_t) for _i, _t in enumerate(["Offline", "Online", "Difference"])]
+axs[0].set_ylim([1000, -1000])
+axs[0].set_xlim([0, 10 * FS])
 axs[0].axvline(768, color="k", linestyle="--")
+axs[0].set_ylabel("Amplitude (uV)")
+axs[0].set_xlabel("Time (samples)")
+sns.despine()
+fig.tight_layout()
+
+# %% Online decoding
+online_preds = extract_events(events, ["pred", "go"])
+fig, axs = plt.subplots(2, 3, figsize=(6, 2.5), sharex=True, sharey=True)
+
+# get predictions
+pc_correct = []
+dts = []
+trial_label = None
+for ts, _, label in online_preds:
+    if "go" in label:
+        if trial_label:
+            pc_correct.append(
+                np.sum(np.array(trial_preds)[:, 1] == trial_label) / len(trial_preds)
+            )
+            dts.append(
+                [_t - trial_preds[_i][0] for _i, (_t, _p) in enumerate(trial_preds[1:])]
+            )
+        trial_label = label[-1]
+        trial_preds = []
+    elif "pred" in label:
+        trial_preds.append([ts, label[-1]])
+pc_correct.append(np.sum(np.array(trial_preds)[:, 1] == trial_label) / len(trial_preds))
+
+# summed
+sns.histplot(np.array(pc_correct) * 100, stat="count", ax=axs[0, 0], binwidth=10)
+axs[0, 0].legend(["all"])
+axs[0, 0].set_ylabel("")
+
+# split by direction
+for letter, ax in zip(DIRECTIONS, axs.flatten()[1:]):
+    sns.histplot(
+        (correct_preds / n_slices * 100)[y == letter],
+        stat="count",
+        ax=ax,
+        binwidth=10,
+    )
+    ax.legend(letter, loc="upper left")
+
+axs[1, 0].set_xlabel(
+    "Percentage of time steps with\ncorrect predictions ({0:.1f}-{1:.1f}s)".format(
+        n_window / FS, (X_i.shape[1] - n_chunk) / FS
+    )
+)
+axs[1, 0].set_ylabel("Trials")
+axs[1, 0].set_xlim([0, 100])
+sns.despine()
+fig.tight_layout()
+
+# time between predictions
+fig, axs = plt.subplots(1, 1, figsize=(4, 2))
+sns.histplot([_x / FS for _xs in dts for _x in _xs], stat="count", ax=axs)
+axs.set_xlabel("Time between predictions (s)")
+
+sns.despine()
+fig.tight_layout()
