@@ -14,7 +14,7 @@ from stimulus import StimController
 
 # experiment parameters
 P_ID = 99
-ONLINE_DECODING = False
+ONLINE_DECODING = True
 N_TRIALS = 10
 SAMPLE_T_MS = 200
 INIT_MS = 10000
@@ -144,6 +144,7 @@ if __name__ == "__main__":
         marker_stream.push_sample(["go %s" % trial])
         trial_start_ms = pygame.time.get_ticks()
         last_stim_update_ms = trial_start_ms
+        last_move_ms = trial_start_ms
 
         # create online buffer and clear stream
         if ONLINE_DECODING:
@@ -152,7 +153,7 @@ if __name__ == "__main__":
             main_logger.warning("t=%.3fs pulled %d samples" % (ts[-1], len(X_chunk)))
             bp_filter.filter(np.array(X_chunk).T[:N_CH, :])
 
-        while pygame.time.get_ticks() - trial_start_ms < TRIAL_MS:
+        while last_move_ms - trial_start_ms < TRIAL_MS:
             # move the robot
             ef_pose = reachy_robot.move_continuously(direction, ef_pose)
 
@@ -164,7 +165,7 @@ if __name__ == "__main__":
             ]
 
             # update stimuli/decode EEG chunk
-            if pygame.time.get_ticks() - last_stim_update_ms > SAMPLE_T_MS:
+            if last_move_ms - last_stim_update_ms > SAMPLE_T_MS:
                 if ONLINE_DECODING:
                     X_chunk, ts = eeg_stream.pull_chunk(max_samples=MAX_SAMPLES)
                     main_logger.warning(
@@ -186,7 +187,9 @@ if __name__ == "__main__":
                         direction = CMD_MAP[pred]
 
                 unity_game.move_stim(ef_coords)
-                last_stim_update_ms = pygame.time.get_ticks()
+                last_stim_update_ms = last_move_ms
+
+            last_move_ms = pygame.time.get_ticks()
 
         unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0], 0)
         marker_stream.push_sample(["rest %s" % trial])
