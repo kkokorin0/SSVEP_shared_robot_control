@@ -61,18 +61,24 @@ class ReachyRobot:
     motor_step_speed = 0.0010  # m/step
     motor_update_time_ms = 20  # ms
 
-    def __init__(self, reachy_ip, logger):
+    def __init__(self, reachy_ip, logger, setup_pos, rest_pos, move_speed):
         """Create robot object by connecting to IP address
 
         Args:
             reachy_ip (str): robot IP
             logger (logging): logger object
+            setup_pos (list of float): joint angles for home position
+            rest_pos (list of float): joint angles for rest position
+            move_speed (float): move duration in seconds
 
         Returns:
             ReachySDK: Reachy
         """
         self.reachy = ReachySDK(host=reachy_ip)
         self.logger = logger
+        self.setup_pos = setup_pos
+        self.rest_pos = rest_pos
+        self.move_speed = move_speed
         self.logger.warning("Connected to Reachy on %s" % reachy_ip)
 
     def turn_on(self):
@@ -184,16 +190,14 @@ class ReachyRobot:
             self.logger.critical("Invalid move")
             return False
 
-    def turn_off(self, pos=None, speed=None, safely=False):
+    def turn_off(self, safely=False):
         """Turn off right arm motors
 
         Args:
-            pos (list of float, optional): Joint angles to move to before turning off
-            speed (float, optional): Time to complete the move in seconds
             safely (bool, optional): Whether to move to pos before turning off
         """
         if safely:
-            self.move_arm_joints(pos, speed)
+            self.move_arm_joints(self.rest_pos, self.move_speed)
         self.reachy.turn_off("r_arm")
 
     def go_to_coords(self, coords, rotation_mat, speed):
@@ -281,6 +285,39 @@ class ReachyRobot:
         R34 = rot_mat(angles[3] / 180 * pi, "y")
         R45 = rot_mat(angles[4] / 180 * pi, "z")
         return np.matmul(R01, np.matmul(R12, np.matmul(R23, np.matmul(R34, R45))))
+
+    def setup(self):
+        """Move arm to home position
+
+        Returns:
+            np.array: [R11 R12 R13 Tx
+                       R21 R22 R23 Ty
+                       R31 R32 R33 Tz
+                       0   0   0   1]
+        """
+        self.turn_on()
+        self.move_arm_joints(self.setup_pos, self.move_speed)
+        return self.get_pose()
+
+    def translate(self, vel, duration):
+        """Move the end-effector continuously in a given direction for a specified
+        diration
+
+        Args:
+            vel (np.array): [vx, vy, vz]
+            duration (int): move duration in ms
+
+        Returns:
+            np.array: [R11 R12 R13 Tx
+                       R21 R22 R23 Ty
+                       R31 R32 R33 Tz
+                       0   0   0   1]
+        """
+        ef_pose = self.get_pose()
+        start_ms = pygame.time.get_ticks()
+        while pygame.time.get_ticks() - start_ms < duration:
+            ef_pose = self.move_continuously(vel, ef_pose)
+        return ef_pose
 
 
 class SimRobot(ReachyRobot):

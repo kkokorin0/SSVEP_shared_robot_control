@@ -142,6 +142,84 @@ class Decoder:
         return np.argmax(self.score(X))
 
 
+class OnlineDecoder(Decoder):
+    """Online decoder that pulls data from an EEG stream, filters it and decodes the signal using CCA"""
+
+    buffer = None
+
+    def __init__(
+        self,
+        window,
+        fs,
+        harmonics,
+        stim_freqs,
+        n_ch,
+        online_filter,
+        eeg_stream,
+        max_samples,
+        logger,
+    ):
+        """Setup decoder, filter and EEG stream
+
+        Args:
+            window (float): window length in seconds
+            fs (Hz): sample rate
+            harmonics (list of int): which harmonics to include
+            stim_freqs (list of int): target frequencies to model with template
+            n_ch (int): number of channels used for decoding
+            online_filter (BandpassFilter): filter data between two frequencies
+            eeg_stream (StreamInlet): stream of EEG data
+            max_samples (int): max number of samples to pull from stream
+            logger (logger): send messages to log file
+        """
+        super().__init__(window, fs, harmonics, stim_freqs)
+        self.filter = online_filter
+        self.eeg_stream = eeg_stream
+        self.n_ch = n_ch
+        self.max_samples = max_samples
+        self.buffer_size = int(window * fs)
+        self.logger = logger
+
+    def flush_stream(self):
+        """Flush the stream"""
+        self.eeg_stream.flush()
+        self.eeg_stream.pull_sample()
+
+    def filter_chunk(self):
+        """Pull chunk of data from stream and filter it
+
+        Returns:
+            np.array: filtered data (Nch, Ns)
+        """
+        X_chunk, ts = self.eeg_stream.pull_chunk(max_samples=self.max_samples)
+        self.logger.warning("t=%.3fs pulled %d samples" % (ts[-1], len(X_chunk)))
+        return self.filter.filter(np.array(X_chunk).T[: self.n_ch, :])
+
+    def clear_buffer(self):
+        """Reset buffer"""
+        self.buffer = None
+
+    def update_buffer(self):
+        """Update buffer with filtered data"""
+        X_filtered = self.filter_chunk()
+        if self.buffer is None:
+            self.buffer = X_filtered
+        else:
+            self.buffer = np.append(self.buffer, X_filtered, axis=1)
+
+    def predict_online(self):
+        """Predict the best template for a window of data in buffer
+
+        Returns:
+            int or None: index of best template or None if buffer is too small
+        """
+        if self.buffer.shape[1] > self.buffer_size:
+            buffer_window = self.buffer[:, -self.buffer_size :]
+            return self.predict(buffer_window)
+        else:
+            return None
+
+
 class BandpassFilter:
     """Online bandpass filter"""
 

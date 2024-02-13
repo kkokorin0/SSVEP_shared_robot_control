@@ -59,6 +59,10 @@ WINDOW_S = 1  # decoder window length (s)
 HARMONICS = [1, 2]  # signals to include in template
 
 if __name__ == "__main__":
+    """Move the robot in each direction for a number of trials while continuously displaying stimuli
+    in a cross pattern. Optionally, decode EEG signals to predict the direction of movement and
+    actively control control robot movement.
+    """
     pygame.init()  # timer
 
     # logging

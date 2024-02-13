@@ -1,6 +1,5 @@
 import logging
 import socket
-import time
 import tkinter as tk
 from datetime import datetime
 from random import randint, sample, seed
@@ -10,17 +9,17 @@ import numpy as np
 import pygame
 from pylsl import StreamInfo, StreamInlet, StreamOutlet, resolve_byprop
 
-from decoding import BandpassFilter, Decoder
+from decoding import BandpassFilter, OnlineDecoder
 from robot_control import ReachyRobot
 from stimulus import StimController
 
 # session
 P_ID = 99  # participant ID
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
-INIT_MS = 10000  # time to settle at the start of each block
+INIT_MS = 10000  # time to settle at the start of each block/trial
 
 # observation block
-OBS_TRIALS = 10  # trials per direction
+OBS_TRIALS = 1  # trials per direction
 PROMPT_MS = 2000  # direction prompt
 DELAY_MS = 1000  # prompt jitter
 OBS_TRIAL_MS = 3600  # observation trial duration
@@ -34,14 +33,13 @@ OBJ_COORDS = []
 
 # control
 SAMPLE_T_MS = 200
-CMDS = ["u", "d", "l", "r", "f"]
 CMD_MAP = {
-    "u": [0, 0, 1],
-    "d": [0, 0, -1],
-    "l": [0, 1, 0],
-    "r": [0, -1, 0],
-    "f": [1, 0, 0],
-    "b": [-1, 0, 0],
+    "u": np.array([0, 0, 1]),
+    "d": np.array([0, 0, -1]),
+    "l": np.array([0, 1, 0]),
+    "r": np.array([0, -1, 0]),
+    "f": np.array([1, 0, 0]),
+    "b": np.array([-1, 0, 0]),
 }
 
 # stimulus
@@ -66,52 +64,65 @@ FILTER_ORDER = 4  # filter order
 WINDOW_S = 1  # decoder window length (s)
 HARMONICS = [1, 2]  # signals to include in template
 
-global experiment_running
+global experiment_running  # allow to pause arm movement
 
 
 class ExperimentGuiApp:
     port = 12345
 
-    def __init__(self, master=None):
-        """Setup GUI for running the experiment blocks, either the (i) observation task or the (ii) reaching
-        task in direct/shared control mode.
+    # block parameters
+    shared_control_on = False
+    observation_fb = False
+    last_trial = 0
 
-        Args:
-            master (_type_, optional): Root process. Defaults to None.
-        """
-        pygame.init()  # timer
+    # outer frame
+    frame_h = "150"
+    frame_w = "400"
 
-        # block parameters
-        self.shared_control_on = False
+    # checkboxes
+    cbox_x = 150
+    cbox_y = 10
+    cbox_dy = 30
 
-        # logging
-        session_id = str(P_ID) + "_" + datetime.now().strftime("%Y_%m_%d")
-        log_file = FOLDER + "//" + session_id + ".log"
-        logging.basicConfig(filename=log_file, level=logging.DEBUG)
-        coloredlogs.install(level="WARNING", fmt="%(asctime)s,%(msecs)03d: %(message)s")
-        self.logger = logging.getLogger(__name__)
+    # buttons
+    button_w = 7
+    button_h = 1
+    button_x0 = 10
+    button_y0 = 10
+    button_dx = 65
+    button_dy = 45
+    light_grey = "#f2f3f4"
+    silver = "#c0c0c0"
+    green = "#00ff00"
+    yellow = "#ffff00"
+    red = "#ff0000"
+    orange = "#ff8000"
 
-        # comms
-        reachy_robot = ReachyRobot(REACHY_WIRED, self.logger)
-        reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
-        unity_game = StimController(HOLOLENS_IP, self.logger)
+    def __init__(
+        self,
+        logger,
+        sample_t,
+        obs_block,
+        reach_block,
+        cmd_map,
+        reachy_robot,
+        unity_game,
+        marker_stream,
+        decoder,
+        master=None,
+    ):
+        # experiment parameters
+        self.sample_t = sample_t
+        self.obs_block = obs_block
+        self.reach_trials = reach_block
+        self.cmd_map = cmd_map
 
-        # marker stream
-        marker_info = StreamInfo("MarkerStream", "Markers", 1, 0, "string", session_id)
-        self.marker_stream = StreamOutlet(marker_info)
-        self.logger.critical(
-            "Connected to marker stream and set-up lab recorder (y/n)?"
-        )
-        if input() != "y":
-            reachy_robot.turn_off(REST_POS, MOVE_SPEED_S, safely=True)
-            self.logger.critical("Streams not set up, exiting")
-        unity_game.setup_stim([0, 0, 0, 0, 0], [0, 0, 0], 0)
-
-        # find EEG stream
-        self.logger.warning("Looking for EEG stream....")
-        eeg_streams = resolve_byprop("type", "EEG")
-        self.logger.critical("Resolved EEG stream %s" % str(eeg_streams[0].desc()))
-        self.eeg_stream = StreamInlet(eeg_streams[0])
+        # IO streams
+        self.logger = logger
+        self.reachy_robot = reachy_robot
+        self.unity_game = unity_game
+        self.marker_stream = marker_stream
+        self.decoder = decoder
 
         # build GUI
         self.display_socket = socket.socket()
@@ -121,83 +132,99 @@ class ExperimentGuiApp:
         self.setup_frame = tk.LabelFrame(self.toplevel)
 
         # experiment frame
-        self.setup_frame.configure(height="150", text="Setup Experiment", width="400")
-        self.setup_frame.place(anchor="nw", height="120", width="400", x="10", y="10")
-        checkbox_x = 150
-        checkbox_y = 10
+        self.setup_frame.configure(
+            height=self.frame_h, text="Setup Experiment", width=self.frame_w
+        )
+        self.setup_frame.place(
+            anchor="nw", height=self.frame_h, width=self.frame_w, x="0", y="0"
+        )
 
         # experiment settings
         self.shared_box = tk.Checkbutton(self.setup_frame)
         self.shared_box.configure(
             text="Shared Control (on/off)", command=self.shared_box_cb
         )
-        self.shared_box.place(anchor="nw", x=checkbox_x, y=checkbox_y)
+        self.shared_box.place(anchor="nw", x=self.cbox_x, y=self.cbox_y)
 
-        self.test_mode_box = tk.Checkbutton(self.setup_frame)
-        self.test_mode_box.configure(
-            text="Test Mode (on/off)", command=self.test_mode_cb
+        self.obs_fb_box = tk.Checkbutton(self.setup_frame)
+        self.obs_fb_box.configure(
+            text="Observation Feedback (on/off)", command=self.obs_feedback_cb
         )
-        self.test_mode_box.place(anchor="nw", x=checkbox_x, y=checkbox_y + 30)
+        self.obs_fb_box.place(anchor="nw", x=self.cbox_x, y=self.cbox_y + self.cbox_dy)
 
-        # action button design
-        button_width = 7
-        button_height = 1
-        button_x0 = 10
-        button_y0 = 10
-        button_x1 = 75
-        button_y1 = 55
-        self.off_bg = "#F2F3F4"
-        self.off_txt = "#c0c0c0"
-
-        # start trial
+        # start reaching trial
         self.start_button = tk.Button(self.setup_frame)
         self.start_button.configure(
-            background="#00ff00",
-            height=button_height,
+            background=self.green,
+            height=self.button_h,
             overrelief="raised",
             state="normal",
             takefocus=False,
             text="Start",
-            width=button_width,
-            disabledforeground=self.off_txt,
+            width=self.button_w,
+            disabledforeground=self.silver,
             command=self.start_button_cb,
-            activebackground="#00ff00",
+            activebackground=self.green,
         )
-        self.start_button.place(anchor="nw", x=button_x0, y=button_y0)
+        self.start_button.place(anchor="nw", x=self.button_x0, y=self.button_y0)
+
+        # start observation block
+        self.obs_button = tk.Button(self.setup_frame)
+        self.obs_button.configure(
+            background=self.yellow,
+            height=self.button_h,
+            overrelief="raised",
+            state="normal",
+            takefocus=False,
+            text="Observe",
+            width=self.button_w,
+            disabledforeground=self.silver,
+            command=self.obs_button_cb,
+            activebackground=self.yellow,
+        )
+        self.obs_button.place(
+            anchor="nw",
+            x=self.button_x0 + self.button_dx,
+            y=self.button_y0 + self.button_dy,
+        )
 
         # stop robot motion
         self.stop_button = tk.Button(self.setup_frame)
         self.stop_button.configure(
-            activebackground="#ff0000",
-            background=self.off_bg,
-            disabledforeground=self.off_txt,
-            height=button_height,
+            activebackground=self.red,
+            background=self.light_grey,
+            disabledforeground=self.silver,
+            height=self.button_h,
             overrelief="raised",
             state="disabled",
             text="Stop",
-            width=button_width,
+            width=self.button_w,
             command=self.stop_button_cb,
         )
-        self.stop_button.place(anchor="nw", x=button_x1, y=button_y0)
+        self.stop_button.place(
+            anchor="nw", x=self.button_x0 + self.button_dx, y=self.button_y0
+        )
 
         # turn off robot
         self.off_button = tk.Button(self.setup_frame)
         self.off_button.configure(
-            activebackground="#ff8000",
-            background=self.off_bg,
-            disabledforeground=self.off_txt,
-            height=button_height,
+            activebackground=self.orange,
+            background=self.light_grey,
+            disabledforeground=self.silver,
+            height=self.button_h,
             overrelief="raised",
             state="disabled",
             text="Off",
-            width=button_width,
+            width=self.button_w,
             command=self.off_button_cb,
         )
-        self.off_button.place(anchor="nw", x=button_x0, y=button_y1)
+        self.off_button.place(
+            anchor="nw", x=self.button_x0, y=self.button_y0 + self.button_dy
+        )
 
         # main widget
-        self.toplevel.configure(height="480", width="640")
-        self.toplevel.geometry("640x480")
+        self.toplevel.configure(height=self.frame_h, width=self.frame_w)
+        self.toplevel.geometry(self.frame_w + "x" + self.frame_h)
         self.mainwindow = self.toplevel
 
     def run(self):
@@ -207,62 +234,226 @@ class ExperimentGuiApp:
     def shared_box_cb(self):
         """Toggle shared control"""
         self.shared_control_on = not self.shared_control_on
-        self.logger(
+        self.logger.critical(
             "Toggle shared control %s" % ("On" if self.shared_control_on else "Off")
         )
 
-    def start_button_cb(self):
-        self.start_button.configure(state="disabled", background=self.off_bg)
+    def obs_feedback_cb(self):
+        """Toggle observation block feedback"""
+        self.observation_fb = not self.observation_fb
+        self.logger.critical(
+            "Toggle observation feedback %s" % ("On" if self.observation_fb else "Off")
+        )
 
+    def start_button_cb(self):
         global experiment_running
         experiment_running = True
+        self.start_button.configure(state="disabled", background=self.light_grey)
+        self.obs_button.configure(state="disabled", background=self.light_grey)
+        self.stop_button.configure(state="normal", background=self.red)
 
-        # generate trials
-        seed(P_ID)
-        self.obs_trials = np.array(
-            [sample(CMDS, len(CMDS)) for _i in range(OBS_TRIALS)]
-        ).reshape(-1)
-        self.logger.warning(self.obs_trials)
-
-        eeg_stream.flush()
-        eeg_stream.pull_sample()
-
-        marker_stream.push_sample(["start run"])
-        self.logger.warning("Start run")
-        pygame.time.delay(INIT_MS)
-
-        # setup online filter and decoder
-        bp_filter = BandpassFilter(FILTER_ORDER, FS, FMIN, FMAX, N_CH)
-        X_chunk, ts = eeg_stream.pull_chunk(max_samples=MAX_SAMPLES)
-        self.logger.warning("t=%.3fs pulled %d samples" % (ts[-1], len(X_chunk)))
-
-        bp_filter.filter(np.array(X_chunk).T[:N_CH, :])
-        decoder = Decoder(WINDOW_S, FS, HARMONICS, FREQS)
-
-        while experiment_running:
-            self.toplevel.update()
-
-        time.sleep(0.5)
         # self.stop_button_cb()
         # self.init_button.configure(state="normal", background="#00ff00")
+
+    def obs_button_cb(self):
+        """Observe the robotic arm move in a given direction and decode EEG data. With feedback turned on
+        decoder outputs will control robot velocity"""
+        global experiment_running
+        experiment_running = True
+        self.obs_button.configure(state="disabled", background=self.light_grey)
+        self.start_button.configure(state="disabled", background=self.light_grey)
+        self.off_button.configure(state="normal", background=self.orange)
+
+        # initialise stream and decoder
+        self.decoder.flush_stream()
+        self.marker_stream.push_sample(
+            ["start run: obs w/%s fb" % ("" if self.observation_fb else "o")]
+        )
+        self.logger.critical(
+            "Start observation run with%s feedback"
+            % ("" if self.observation_fb else "out")
+        )
+        pygame.time.delay(self.obs_block["init"])
+        self.decoder.filter_chunk()
+
+        for t_i, trial in enumerate(self.obs_block["trials"]):
+            logger.warning(
+                "Trial (%s) %d/%d" % (trial, t_i + 1, len(self.obs_block["trials"]))
+            )
+
+            # setup arm in the opposite direction from trial
+            direction = self.cmd_map[trial]
+            self.reachy_robot.setup()
+            ef_pose = self.reachy_robot.translate(
+                -direction, self.obs_block["start_offset"]
+            )
+
+            # highlight direction
+            unity_game.prompt([_c == trial for _c in self.cmd_map.keys()], ef_pose)
+            self.marker_stream.push_sample(["prompt %s" % trial])
+            pygame.time.delay(
+                randint(
+                    self.obs_block["prompt"],
+                    self.obs_block["prompt"] + self.obs_block["delay"],
+                )
+            )
+
+            # start flashing
+            unity_game.turn_on_stim(ef_pose)
+            self.marker_stream.push_sample(["go %s" % trial])
+            trial_start_ms = pygame.time.get_ticks()
+            last_stim_update_ms = trial_start_ms
+            last_move_ms = trial_start_ms
+
+            # create online buffer and clear stream
+            if self.observation_fb:
+                self.decoder.clear_buffer()
+                self.decoder.filter_chunk()
+
+            # move the robot continuously
+            while last_move_ms - trial_start_ms < obs_block["length"]:
+                self.toplevel.update()
+                ef_pose = reachy_robot.move_continuously(direction, ef_pose)
+                data_msg = (
+                    "X: " + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
+                )
+
+                if last_move_ms - last_stim_update_ms > self.sample_t:
+                    # decode EEG chunk
+                    self.decoder.update_buffer()
+                    pred_i = self.decoder.predict_online()
+
+                    # predict if enough data in buffer
+                    if pred_i is not None:
+                        pred = list(self.cmd_map.keys())[pred_i]
+                        data_msg += "pred: %s" % (pred)
+
+                        # control the robot
+                        if self.observation_fb:
+                            direction = self.cmd_map[pred]
+
+                    # save data and update stim
+                    self.logger.warning(data_msg)
+                    self.marker_stream.push_sample([data_msg])
+                    unity_game.move_stim(unity_game.coord_transform(ef_pose))
+                    last_stim_update_ms = last_move_ms
+
+                last_move_ms = pygame.time.get_ticks()
+
+            # rest while resetting the arm/stim
+            self.unity_game.turn_off_stim()
+            self.marker_stream.push_sample(["rest %s" % trial])
+            reachy_robot.turn_off(safely=True)
+            pygame.time.delay(obs_block["rest"])
+
+        self.marker_stream.push_sample(
+            ["start run: obs w/%s fb" % ("" if self.observation_fb else "o")]
+        )
+        self.logger.critical(
+            "End observation run with%s feedback"
+            % ("" if self.observation_fb else "out")
+        )
+        self.off_button_cb()
 
     def stop_button_cb(self):
         """Stop the arm at the current position and end the trial"""
         global experiment_running
         experiment_running = False
-        self.start_button.configure(state="disabled", background=self.off_bg)
+        self.start_button.configure(state="disabled", background=self.light_grey)
+        self.obs_button.configure(state="disabled", background=self.light_grey)
 
-        # self.TestReachyRobot.turn_off(safely=True)
-        # self.init_button.configure(state="normal", background="#00ff00")
+        self.logger.warning("Arm stopped")
+        self.off_button.configure(state="normal", background=self.orange)
 
     def off_button_cb(self):
         """Reset the arm and turn it off"""
-        global experiment_running
-        experiment_running = False
-        # self.start_button.configure(state="disabled", background=self.off_bg)
-        # self.init_button.configure(state="normal", background="#00ff00")
+        self.stop_button.configure(state="disabled", background=self.light_grey)
+        self.off_button.configure(state="disabled", background=self.light_grey)
+
+        self.reachy_robot.turn_off(safely=True)
+        self.logger.warning("Arm reset and turned off")
+
+        self.start_button.configure(state="normal", background=self.green)
+        self.obs_button.configure(state="normal", background=self.yellow)
 
 
 if __name__ == "__main__":
-    app = ExperimentGuiApp()
+    pygame.init()  # timer
+
+    # logging
+    session_id = str(P_ID) + "_" + datetime.now().strftime("%Y_%m_%d")
+    log_file = FOLDER + "//" + session_id + ".log"
+    logging.basicConfig(filename=log_file, level=logging.DEBUG)
+    coloredlogs.install(level="WARNING", fmt="%(asctime)s,%(msecs)03d: %(message)s")
+    logger = logging.getLogger(__name__)
+
+    # observation block
+    seed(P_ID)
+    obs_trials = np.array(
+        [sample(CMD_MAP.keys(), len(CMD_MAP)) for _i in range(OBS_TRIALS)]
+    )
+    obs_block = dict(
+        trials=obs_trials.reshape(-1),
+        init=INIT_MS,
+        prompt=PROMPT_MS,
+        delay=DELAY_MS,
+        length=OBS_TRIAL_MS,
+        rest=OBS_REST_MS,
+        start_offset=OFFSET_MS,
+    )
+    logger.warning("Observation trials: %s" % "".join(obs_trials.reshape(-1)))
+
+    # reaching block
+    reach_block = None
+
+    # comms
+    reachy_robot = ReachyRobot(REACHY_WIRED, logger, SETUP_POS, REST_POS, MOVE_SPEED_S)
+    reachy_robot.turn_off(safely=True)
+    unity_game = StimController(HOLOLENS_IP, logger, QR_OFFSET, FREQS, STIM_DIST)
+    unity_game.turn_off_stim()
+
+    # setup marker stream
+    marker_info = StreamInfo("MarkerStream", "Markers", 1, 0, "string", session_id)
+    marker_stream = StreamOutlet(marker_info)
+    logger.critical("Connected to marker stream and set-up lab recorder (y/n)?")
+    if input() != "y":
+        logger.critical("Streams not set up, exiting")
+    marker_stream.push_sample(["start session"])
+    marker_stream.push_sample(
+        ["P%d Freqs: %s" % (P_ID, ",".join(str(_f) for _f in FREQS))]
+    )
+
+    # find EEG stream and build online decoder
+    logger.warning("Looking for EEG stream....")
+    eeg_streams = resolve_byprop("type", "EEG")
+    logger.critical("Resolved EEG stream %s" % str(eeg_streams[0].desc()))
+    bp_filter = BandpassFilter(FILTER_ORDER, FS, FMIN, FMAX, N_CH)
+    decoder = OnlineDecoder(
+        window=WINDOW_S,
+        fs=FS,
+        harmonics=HARMONICS,
+        stim_freqs=FREQS,
+        n_ch=N_CH,
+        online_filter=bp_filter,
+        eeg_stream=StreamInlet(eeg_streams[0]),
+        max_samples=MAX_SAMPLES,
+        logger=logger,
+    )
+
+    # create GUI
+    app = ExperimentGuiApp(
+        logger=logger,
+        sample_t=SAMPLE_T_MS,
+        obs_block=obs_block,
+        reach_block=reach_block,
+        cmd_map=CMD_MAP,
+        reachy_robot=reachy_robot,
+        unity_game=unity_game,
+        marker_stream=marker_stream,
+        decoder=decoder,
+    )
     app.run()
+
+    # end session
+    marker_stream.push_sample(["end session"])
+    unity_game.end_run()
