@@ -6,7 +6,7 @@ from sklearn.cross_decomposition import CCA
 
 
 def extract_events(events, labels):
-    """Extract all events that contain a substring from the start to end of a run
+    """Extract all events that contain a substring from the start to end of a session
 
     Args:
         events (list): list of [timestep, 0, event]
@@ -20,9 +20,9 @@ def extract_events(events, labels):
     for ts, _, event in events:
         if valid_events and any([_l in event for _l in labels]):
             filtered_events.append([ts, 0, event])
-        elif event == "start run":
+        elif event == "start session":
             valid_events = True
-        elif event == "end run":
+        elif event == "end session":
             valid_events = False
     return filtered_events
 

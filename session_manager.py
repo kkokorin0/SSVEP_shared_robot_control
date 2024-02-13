@@ -16,10 +16,10 @@ from stimulus import StimController
 # session
 P_ID = 99  # participant ID
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
-INIT_MS = 10000  # time to settle at the start of each block/trial
+INIT_MS = 5000  # time to settle at the start of each block/trial
 
 # observation block
-OBS_TRIALS = 1  # trials per direction
+OBS_TRIALS = 5  # trials per direction
 PROMPT_MS = 2000  # direction prompt
 DELAY_MS = 1000  # prompt jitter
 OBS_TRIAL_MS = 3600  # observation trial duration
@@ -39,7 +39,6 @@ CMD_MAP = {
     "l": np.array([0, 1, 0]),
     "r": np.array([0, -1, 0]),
     "f": np.array([1, 0, 0]),
-    "b": np.array([-1, 0, 0]),
 }
 
 # stimulus
@@ -290,7 +289,7 @@ class ExperimentGuiApp:
 
             # highlight direction
             unity_game.prompt([_c == trial for _c in self.cmd_map.keys()], ef_pose)
-            self.marker_stream.push_sample(["prompt %s" % trial])
+            self.marker_stream.push_sample(["prompt:%s" % trial])
             pygame.time.delay(
                 randint(
                     self.obs_block["prompt"],
@@ -300,7 +299,7 @@ class ExperimentGuiApp:
 
             # start flashing
             unity_game.turn_on_stim(ef_pose)
-            self.marker_stream.push_sample(["go %s" % trial])
+            self.marker_stream.push_sample(["go:%s" % trial])
             trial_start_ms = pygame.time.get_ticks()
             last_stim_update_ms = trial_start_ms
             last_move_ms = trial_start_ms
@@ -314,9 +313,7 @@ class ExperimentGuiApp:
             while last_move_ms - trial_start_ms < obs_block["length"]:
                 self.toplevel.update()
                 ef_pose = reachy_robot.move_continuously(direction, ef_pose)
-                data_msg = (
-                    "X: " + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
-                )
+                data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
 
                 if last_move_ms - last_stim_update_ms > self.sample_t:
                     # decode EEG chunk
@@ -326,7 +323,7 @@ class ExperimentGuiApp:
                     # predict if enough data in buffer
                     if pred_i is not None:
                         pred = list(self.cmd_map.keys())[pred_i]
-                        data_msg += "pred: %s" % (pred)
+                        data_msg += "pred:%s" % (pred)
 
                         # control the robot
                         if self.observation_fb:
@@ -342,12 +339,12 @@ class ExperimentGuiApp:
 
             # rest while resetting the arm/stim
             self.unity_game.turn_off_stim()
-            self.marker_stream.push_sample(["rest %s" % trial])
+            self.marker_stream.push_sample(["rest:%s" % trial])
             reachy_robot.turn_off(safely=True)
             pygame.time.delay(obs_block["rest"])
 
         self.marker_stream.push_sample(
-            ["start run: obs w/%s fb" % ("" if self.observation_fb else "o")]
+            ["end run: obs w/%s fb" % ("" if self.observation_fb else "o")]
         )
         self.logger.critical(
             "End observation run with%s feedback"
@@ -420,7 +417,7 @@ if __name__ == "__main__":
         logger.critical("Streams not set up, exiting")
     marker_stream.push_sample(["start session"])
     marker_stream.push_sample(
-        ["P%d Freqs: %s" % (P_ID, ",".join(str(_f) for _f in FREQS))]
+        ["P%d freqs:%s" % (P_ID, ",".join(str(_f) for _f in FREQS))]
     )
 
     # find EEG stream and build online decoder
