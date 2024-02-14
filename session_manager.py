@@ -10,7 +10,7 @@ import pygame
 from pylsl import StreamInfo, StreamInlet, StreamOutlet, resolve_byprop
 
 from decoding import BandpassFilter, OnlineDecoder
-from robot_control import ReachyRobot
+from robot_control import ReachyRobot, SharedController
 from stimulus import StimController
 
 # session
@@ -29,7 +29,19 @@ OFFSET_MS = 1000  # offset in the opposite direction
 # reaching block
 REACH_TRIALS = 3
 N_OBJ = 4
-OBJ_COORDS = []
+OBJ_COORDS = [
+    np.array([0, 0, 0]),  # top left
+    np.array([0, 0, 0]),  # top middle
+    np.array([0, 0, 0]),  # top right
+    np.array([0, 0, 0]),  # middle left
+    np.array([0, 0, 0]),  # middle middle
+    np.array([0, 0, 0]),  # middle right
+    np.array([0, 0, 0]),  # bottom left
+    np.array([0, 0, 0]),  # bottom middle
+    np.array([0, 0, 0]),  # bottom right
+]
+COLLISION_DIST = 0.05  # object reached distance (m)
+REACH_TRIAL_MS = 30000  # max trial duration
 
 # control
 SAMPLE_T_MS = 200
@@ -40,6 +52,9 @@ CMD_MAP = {
     "r": np.array([0, -1, 0]),
     "f": np.array([1, 0, 0]),
 }
+ALPHA_MAX = 0.7  # max proportion of robot assistance
+ALPHA_C0 = 0.5  # confidence for median assistance
+ALPHA_A = 10  # assistance aggressiveness
 
 # stimulus
 FREQS = [7, 8, 9, 11, 13]  # top, bottom, left, right, middle (Hz)
@@ -108,20 +123,26 @@ class ExperimentGuiApp:
         unity_game,
         marker_stream,
         decoder,
+        shared_controller,
         master=None,
     ):
         # experiment parameters
         self.sample_t = sample_t
         self.obs_block = obs_block
-        self.reach_trials = reach_block
+        self.reach_block = reach_block
         self.cmd_map = cmd_map
 
-        # IO streams
+        # data streams
         self.logger = logger
-        self.reachy_robot = reachy_robot
-        self.unity_game = unity_game
         self.marker_stream = marker_stream
+
+        # robot control
+        self.reachy_robot = reachy_robot
+        self.shared_controller = shared_controller
+
+        # stimuli and decoder
         self.decoder = decoder
+        self.unity_game = unity_game
 
         # build GUI
         self.display_socket = socket.socket()
@@ -233,8 +254,10 @@ class ExperimentGuiApp:
     def shared_box_cb(self):
         """Toggle shared control"""
         self.shared_control_on = not self.shared_control_on
+        self.last_trial = 0
         self.logger.critical(
-            "Toggle shared control %s" % ("On" if self.shared_control_on else "Off")
+            "Toggle shared control %s and reset trial index"
+            % ("On" if self.shared_control_on else "Off")
         )
 
     def obs_feedback_cb(self):
@@ -245,14 +268,120 @@ class ExperimentGuiApp:
         )
 
     def start_button_cb(self):
+        """Continuously control the robotic arm in shared or direct mode until an object is reached or
+        the stop button is pressed"""
         global experiment_running
         experiment_running = True
         self.start_button.configure(state="disabled", background=self.light_grey)
         self.obs_button.configure(state="disabled", background=self.light_grey)
         self.stop_button.configure(state="normal", background=self.red)
 
-        # self.stop_button_cb()
-        # self.init_button.configure(state="normal", background="#00ff00")
+        # first trial in block
+        if self.last_trial == 0:
+            self.marker_stream.push_sample(
+                ["start run: %s" % ("SC" if self.shared_control_on else "DC")]
+            )
+            self.logger.critical(
+                "Start %s control run"
+                % ("shared" if self.shared_control_on else "direct")
+            )
+
+        # initialise stream and decoder
+        self.decoder.flush_stream()
+        goal_obj = self.reach_block["trials"][self.last_trial]
+        logger.warning(
+            "Trial:%d/%d Obj:%d"
+            % (self.last_trial + 1, len(self.reach_block["trials"]), goal_obj)
+        )
+        self.marker_stream.push_sample(["init:obj%d" % goal_obj])
+        pygame.time.delay(self.reach_block["init"])
+        self.decoder.filter_chunk()
+
+        # setup arm and start flashing
+        ef_pose = self.reachy_robot.setup()
+        unity_game.turn_on_stim(ef_pose)
+        self.marker_stream.push_sample(["go:obj%d" % goal_obj])
+        trial_start_ms = pygame.time.get_ticks()
+        last_stim_update_ms = trial_start_ms
+        last_move_ms = trial_start_ms
+
+        # create online buffer, clear stream and reset command history
+        self.decoder.clear_buffer()
+        self.decoder.filter_chunk()
+        self.shared_controller.reset(ef_pose[:3, 3])
+
+        # move the robot continuously
+        u_cmb = None
+        while experiment_running and (
+            last_move_ms - trial_start_ms < self.reach_block["length"]
+        ):
+            self.toplevel.update()
+
+            # check if an object has been reached
+            reached_obj = self.shared_controller.check_collision(ef_pose, goal_obj)
+            if reached_obj is not None:
+                self.marker_stream.push_sample(
+                    ["reach:obj%d goal:obj%d" % (reached_obj, goal_obj)]
+                )
+                self.logger.critical(
+                    "%s: Reached object %d"
+                    % ("Success" if reached_obj == goal_obj else "Fail", reached_obj)
+                )
+                break
+
+            # wait for first prediction after buffer is filled
+            if u_cmb is not None:
+                ef_pose = reachy_robot.move_continuously(u_cmb, ef_pose)
+                data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
+
+            if last_move_ms - last_stim_update_ms > self.sample_t:
+                # decode EEG chunk
+                self.decoder.update_buffer()
+                pred_i = self.decoder.predict_online()
+
+                # predict direction if enough data in buffer
+                if pred_i is not None:
+                    pred = list(self.cmd_map.keys())[pred_i]
+                    u_user = self.cmd_map[pred]
+
+                    # predict obj and get robot velocity
+                    pred_obj, u_robot = self.shared_controller.predict_obj(
+                        ef_pose[:3, 3], u_user
+                    )
+
+                    # calculate confidence
+                    confidence = self.decoder.get_confidence(pred_obj, ef_pose[:3, 3])
+
+                    # compute alpha
+                    alpha = (
+                        self.decoder.get_alpha(confidence)
+                        if self.shared_control_on
+                        else 0
+                    )
+
+                    # get combined velocity
+                    u_cmb = self.shared_controller.get_cmb_vel(u_user, u_robot, alpha)
+                    data_msg += (
+                        "pred:%s pred_obj:%d conf:%.2f alpha:%.2f u_robot:%s u_cmb:%s"
+                        % (
+                            pred,
+                            pred_obj,
+                            confidence,
+                            alpha,
+                            ",".join(["%.3f" % _x for _x in u_robot]),
+                            ",".join(["%.3f" % _x for _x in u_cmb]),
+                        )
+                    )
+
+                # save data and update stim
+                self.logger.warning(data_msg)
+                self.marker_stream.push_sample([data_msg])
+                unity_game.move_stim(unity_game.coord_transform(ef_pose))
+                last_stim_update_ms = last_move_ms
+
+            last_move_ms = pygame.time.get_ticks()
+
+        self.stop_button_cb()
 
     def obs_button_cb(self):
         """Observe the robotic arm move in a given direction and decode EEG data. With feedback turned on
@@ -310,7 +439,7 @@ class ExperimentGuiApp:
                 self.decoder.filter_chunk()
 
             # move the robot continuously
-            while last_move_ms - trial_start_ms < obs_block["length"]:
+            while last_move_ms - trial_start_ms < self.obs_block["length"]:
                 self.toplevel.update()
                 ef_pose = reachy_robot.move_continuously(direction, ef_pose)
                 data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
@@ -359,8 +488,26 @@ class ExperimentGuiApp:
         self.start_button.configure(state="disabled", background=self.light_grey)
         self.obs_button.configure(state="disabled", background=self.light_grey)
 
+        # rest while resetting the arm/stim
+        self.unity_game.turn_off_stim()
+        self.marker_stream.push_sample(
+            ["rest:obj%d" % self.reach_block["trials"][self.last_trial]]
+        )
         self.logger.warning("Arm stopped")
-        self.off_button.configure(state="normal", background=self.orange)
+
+        # increment and reset trial if last
+        self.last_trial += 1
+        if self.last_trial == len(self.reach_block["trials"]):
+            self.last_trial = 0
+            self.marker_stream.push_sample(
+                ["end run: %s" % ("SC" if self.shared_control_on else "DC")]
+            )
+            self.logger.critical(
+                "End %s control run"
+                % ("shared" if self.shared_control_on else "direct")
+            )
+
+        self.off_button_cb()
 
     def off_button_cb(self):
         """Reset the arm and turn it off"""
@@ -388,9 +535,9 @@ if __name__ == "__main__":
     seed(P_ID)
     obs_trials = np.array(
         [sample(CMD_MAP.keys(), len(CMD_MAP)) for _i in range(OBS_TRIALS)]
-    )
+    ).reshape(-1)
     obs_block = dict(
-        trials=obs_trials.reshape(-1),
+        trials=obs_trials,
         init=INIT_MS,
         prompt=PROMPT_MS,
         delay=DELAY_MS,
@@ -398,10 +545,15 @@ if __name__ == "__main__":
         rest=OBS_REST_MS,
         start_offset=OFFSET_MS,
     )
-    logger.warning("Observation trials: %s" % "".join(obs_trials.reshape(-1)))
+    logger.warning("Observation trials: %s" % "".join(obs_trials))
 
     # reaching block
-    reach_block = None
+    obj_subset = sorted(sample(range(len(OBJ_COORDS)), N_OBJ))
+    reaching_trials = np.array(
+        [sample(obj_subset, len(obj_subset)) for _i in range(REACH_TRIALS)]
+    )
+    logger.warning("Reaching blocks: %s" % "".join(obj_subset))
+    reach_block = dict(trials=reaching_trials, init=INIT_MS, length=REACH_TRIAL_MS)
 
     # comms
     reachy_robot = ReachyRobot(REACHY_WIRED, logger, SETUP_POS, REST_POS, MOVE_SPEED_S)
@@ -437,6 +589,16 @@ if __name__ == "__main__":
         logger=logger,
     )
 
+    # create shared controller
+    shared_controller = SharedController(
+        obj_labels=obj_subset,
+        obj_coords=[OBJ_COORDS[_i] for _i in obj_subset],
+        collision_d=COLLISION_DIST,
+        max_assistance=ALPHA_MAX,
+        median_confidence=ALPHA_C0,
+        aggressiveness=ALPHA_A,
+    )
+
     # create GUI
     app = ExperimentGuiApp(
         logger=logger,
@@ -448,6 +610,7 @@ if __name__ == "__main__":
         unity_game=unity_game,
         marker_stream=marker_stream,
         decoder=decoder,
+        shared_controller=shared_controller,
     )
     app.run()
 

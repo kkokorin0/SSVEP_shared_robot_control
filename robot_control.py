@@ -368,3 +368,63 @@ class SimRobot(ReachyRobot):
         # wait for move
         pygame.time.delay(self.motor_update_time_ms)
         return nxt_pose
+
+
+class SharedController:
+    initial_distances = None
+
+    def __init__(
+        self,
+        obj_labels,
+        obj_coords,
+        collision_d,
+        max_assistance,
+        median_confidence,
+        aggressiveness,
+    ):
+        self.objs = {_l: _c for _l, _c in zip(obj_labels, obj_coords)}
+        self.collision_d = collision_d
+        self.angle_sum = np.zeros(len(obj_labels))
+        self.sigmoid = dict(l=max_assistance, c0=median_confidence, a=aggressiveness)
+
+    def reset(self, coords):
+        self.angle_sum = np.zeros(len(self.objs))
+        self.initial_distances = self.get_obj_distances(self, coords)
+
+    def get_obj_distances(self, coords):
+        return [np.linalg.norm(_vec) for _vec in self.get_obj_vectors(coords)]
+
+    def get_obj_vectors(self, coords):
+        return np.array([_obj - coords for _obj in self.objs.values()])
+
+    def check_collision(self, coords):
+        for dist, obj_i in zip(self.get_obj_distances(self, coords), self.objs.keys()):
+            if dist < self.collision_d:
+                return obj_i
+        return None
+
+    def predict_obj(self, coords, u_user):
+        obj_norm_vec = [
+            _vec / np.linalg.norm(_vec) for _vec in self.get_obj_vectors(coords)
+        ]
+        self.angle_sum += np.array(
+            [np.arccos(np.dot(_v, u_user)) for _v in obj_norm_vec]
+        )
+        pred_i = np.argmin(self.angle_sum)
+        return list(self.objs.keys())[pred_i], obj_norm_vec[pred_i]
+
+    def get_confidence(self, obj, coords):
+        for i, obj_label in enumerate(self.objs.keys()):
+            if obj_label == obj:
+                norm_dist = (
+                    self.get_obj_distances(coords)[i] / self.initial_distances[i]
+                )
+                return max(0, 1 - norm_dist)
+
+    def get_alpha(self, confidence):
+        return self.sigmoid["l"] / (
+            1 + np.exp(self.sigmoid["a"] * (self.sigmoid["c0"] - confidence))
+        )
+
+    def get_cmb_vel(self, u_user, u_robot, alpha):
+        return (1 - alpha) * u_user + alpha * u_robot
