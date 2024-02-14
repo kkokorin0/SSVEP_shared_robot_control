@@ -257,14 +257,14 @@ class ExperimentGuiApp:
         self.last_trial = 0
         self.logger.critical(
             "Toggle shared control %s and reset trial index"
-            % ("On" if self.shared_control_on else "Off")
+            % ("ON" if self.shared_control_on else "OFF")
         )
 
     def obs_feedback_cb(self):
         """Toggle observation block feedback"""
         self.observation_fb = not self.observation_fb
         self.logger.critical(
-            "Toggle observation feedback %s" % ("On" if self.observation_fb else "Off")
+            "Toggle observation feedback %s" % ("ON" if self.observation_fb else "OFF")
         )
 
     def start_button_cb(self):
@@ -318,7 +318,7 @@ class ExperimentGuiApp:
             self.toplevel.update()
 
             # check if an object has been reached
-            reached_obj = self.shared_controller.check_collision(ef_pose, goal_obj)
+            reached_obj = self.shared_controller.check_collision(ef_pose[:3, 3])
             if reached_obj is not None:
                 self.marker_stream.push_sample(
                     ["reach:obj%d goal:obj%d" % (reached_obj, goal_obj)]
@@ -329,12 +329,10 @@ class ExperimentGuiApp:
                 )
                 break
 
-            # wait for first prediction after buffer is filled
-            if u_cmb is not None:
-                ef_pose = reachy_robot.move_continuously(u_cmb, ef_pose)
+            if last_move_ms - last_stim_update_ms > self.sample_t:
+                # store coords
                 data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
 
-            if last_move_ms - last_stim_update_ms > self.sample_t:
                 # decode EEG chunk
                 self.decoder.update_buffer()
                 pred_i = self.decoder.predict_online()
@@ -350,11 +348,13 @@ class ExperimentGuiApp:
                     )
 
                     # calculate confidence
-                    confidence = self.decoder.get_confidence(pred_obj, ef_pose[:3, 3])
+                    confidence = self.shared_controller.get_confidence(
+                        pred_obj, ef_pose[:3, 3]
+                    )
 
                     # compute alpha
                     alpha = (
-                        self.decoder.get_alpha(confidence)
+                        self.shared_controller.get_alpha(confidence)
                         if self.shared_control_on
                         else 0
                     )
@@ -373,10 +373,15 @@ class ExperimentGuiApp:
                         )
                     )
 
-                # save data and update stim
+                # store data
                 self.logger.warning(data_msg)
                 self.marker_stream.push_sample([data_msg])
-                unity_game.move_stim(unity_game.coord_transform(ef_pose))
+
+                # move robot and update stim
+                if u_cmb is not None:
+                    ef_pose = reachy_robot.move_continuously(u_cmb, ef_pose)
+                    unity_game.move_stim(unity_game.coord_transform(ef_pose))
+
                 last_stim_update_ms = last_move_ms
 
             last_move_ms = pygame.time.get_ticks()
@@ -531,30 +536,6 @@ if __name__ == "__main__":
     coloredlogs.install(level="WARNING", fmt="%(asctime)s,%(msecs)03d: %(message)s")
     logger = logging.getLogger(__name__)
 
-    # observation block
-    seed(P_ID)
-    obs_trials = np.array(
-        [sample(CMD_MAP.keys(), len(CMD_MAP)) for _i in range(OBS_TRIALS)]
-    ).reshape(-1)
-    obs_block = dict(
-        trials=obs_trials,
-        init=INIT_MS,
-        prompt=PROMPT_MS,
-        delay=DELAY_MS,
-        length=OBS_TRIAL_MS,
-        rest=OBS_REST_MS,
-        start_offset=OFFSET_MS,
-    )
-    logger.warning("Observation trials: %s" % "".join(obs_trials))
-
-    # reaching block
-    obj_subset = sorted(sample(range(len(OBJ_COORDS)), N_OBJ))
-    reaching_trials = np.array(
-        [sample(obj_subset, len(obj_subset)) for _i in range(REACH_TRIALS)]
-    )
-    logger.warning("Reaching blocks: %s" % "".join(obj_subset))
-    reach_block = dict(trials=reaching_trials, init=INIT_MS, length=REACH_TRIAL_MS)
-
     # comms
     reachy_robot = ReachyRobot(REACHY_WIRED, logger, SETUP_POS, REST_POS, MOVE_SPEED_S)
     reachy_robot.turn_off(safely=True)
@@ -588,6 +569,36 @@ if __name__ == "__main__":
         max_samples=MAX_SAMPLES,
         logger=logger,
     )
+
+    # observation block
+    seed(P_ID)
+    obs_trials = np.array(
+        [sample(list(CMD_MAP.keys()), len(CMD_MAP)) for _i in range(OBS_TRIALS)]
+    ).reshape(-1)
+    obs_block = dict(
+        trials=obs_trials,
+        init=INIT_MS,
+        prompt=PROMPT_MS,
+        delay=DELAY_MS,
+        length=OBS_TRIAL_MS,
+        rest=OBS_REST_MS,
+        start_offset=OFFSET_MS,
+    )
+    logger.warning("Observation trials: %s" % ",".join(obs_trials))
+
+    # reaching block
+    obj_subset = sorted(sample(range(len(OBJ_COORDS)), N_OBJ))
+    reaching_trials = np.array(
+        [sample(obj_subset, len(obj_subset)) for _i in range(REACH_TRIALS)]
+    ).reshape(-1)
+    logger.warning(
+        "Reaching trials (%s): %s"
+        % (
+            ",".join([str(_o) for _o in obj_subset]),
+            ",".join([str(_i) for _i in reaching_trials]),
+        )
+    )
+    reach_block = dict(trials=reaching_trials, init=INIT_MS, length=REACH_TRIAL_MS)
 
     # create shared controller
     shared_controller = SharedController(

@@ -389,7 +389,7 @@ class SharedController:
 
     def reset(self, coords):
         self.angle_sum = np.zeros(len(self.objs))
-        self.initial_distances = self.get_obj_distances(self, coords)
+        self.initial_distances = self.get_obj_distances(coords)
 
     def get_obj_distances(self, coords):
         return [np.linalg.norm(_vec) for _vec in self.get_obj_vectors(coords)]
@@ -398,7 +398,7 @@ class SharedController:
         return np.array([_obj - coords for _obj in self.objs.values()])
 
     def check_collision(self, coords):
-        for dist, obj_i in zip(self.get_obj_distances(self, coords), self.objs.keys()):
+        for dist, obj_i in zip(self.get_obj_distances(coords), self.objs.keys()):
             if dist < self.collision_d:
                 return obj_i
         return None
