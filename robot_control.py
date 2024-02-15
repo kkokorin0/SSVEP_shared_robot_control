@@ -58,7 +58,7 @@ class ReachyRobot:
     parallel_gripper = np.array(
         [[-0.153, -0.027, -0.988], [-0.009, 1, -0.026], [0.988, 0.005, -0.153]]
     )  # parallel to table
-    motor_step_speed = 0.0010  # m/step
+    motor_step_speed = 0.001  # m/step
     motor_update_time_ms = 20  # ms
 
     def __init__(self, reachy_ip, logger, setup_pos, rest_pos, move_speed):
@@ -304,7 +304,7 @@ class ReachyRobot:
         diration
 
         Args:
-            vel (np.array): [vx, vy, vz]
+            vel (list): [vx, vy, vz]
             duration (int): move duration in ms
 
         Returns:
