@@ -27,21 +27,22 @@ OBS_REST_MS = 2000  # rest period
 OFFSET_MS = 1000  # offset in the opposite direction
 
 # reaching block
-REACH_TRIALS = 3
-N_OBJ = 4
+REACH_TRIALS = 1
+N_OBJ = 4  # object subset
 OBJ_COORDS = [
-    np.array([0, 0, 0]),  # top left
-    np.array([0, 0, 0]),  # top middle
-    np.array([0, 0, 0]),  # top right
-    np.array([0, 0, 0]),  # middle left
-    np.array([0, 0, 0]),  # middle middle
-    np.array([0, 0, 0]),  # middle right
-    np.array([0, 0, 0]),  # bottom left
-    np.array([0, 0, 0]),  # bottom middle
-    np.array([0, 0, 0]),  # bottom right
+    np.array([0.420, -0.080, -0.130]),  # top left
+    np.array([0.420, -0.220, -0.130]),  # top middle
+    np.array([0.420, -0.330, -0.130]),  # top right
+    np.array([0.430, -0.080, -0.240]),  # middle left
+    np.array([0.430, -0.230, -0.240]),  # middle middle
+    np.array([0.430, -0.340, -0.240]),  # middle right
+    np.array([0.440, -0.080, -0.350]),  # bottom left
+    np.array([0.440, -0.220, -0.350]),  # bottom middle
+    np.array([0.440, -0.340, -0.350]),  # bottom right
 ]
-COLLISION_DIST = 0.05  # object reached distance (m)
+COLLISION_DIST = 0.03  # object reached distance (m)
 REACH_TRIAL_MS = 30000  # max trial duration
+REVERSE_OFFSET_MS = 2000  # reverse move duration
 
 # control
 SAMPLE_T_MS = 200
@@ -66,7 +67,7 @@ REACHY_WIRED = "169.254.238.100"  # Reachy
 SETUP_POS = [25, 0, 0, -110, 0, -10, 0]  # starting joint angles
 REST_POS = [15, 0, 0, -75, 0, -30, 0]  # arm drop position
 MOVE_SPEED_S = 1  # arm movement duration
-QR_OFFSET = [0.03, -0.01, 0.02]  # fine-tune QR position
+QR_OFFSET = [0.03, -0.01, 0.01]  # fine-tune QR position
 
 # recording/decoding
 FS = 256  # sample rate (Hz)
@@ -312,10 +313,16 @@ class ExperimentGuiApp:
 
         # move the robot continuously
         u_cmb = None
-        while experiment_running and (
-            last_move_ms - trial_start_ms < self.reach_block["length"]
-        ):
+        while last_move_ms - trial_start_ms < self.reach_block["length"]:
+            # stop button pressed
+            if not experiment_running:
+                return
+
+            # update GUI and move the robot
             self.toplevel.update()
+            if u_cmb is not None:
+                ef_pose = reachy_robot.move_continuously(u_cmb, ef_pose)
+            data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
 
             # check if an object has been reached
             reached_obj = self.shared_controller.check_collision(ef_pose[:3, 3])
@@ -329,10 +336,8 @@ class ExperimentGuiApp:
                 )
                 break
 
+            # get new control command every sample_t
             if last_move_ms - last_stim_update_ms > self.sample_t:
-                # store coords
-                data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
-
                 # decode EEG chunk
                 self.decoder.update_buffer()
                 pred_i = self.decoder.predict_online()
@@ -373,15 +378,10 @@ class ExperimentGuiApp:
                         )
                     )
 
-                # store data
+                # save data and update stim
                 self.logger.warning(data_msg)
                 self.marker_stream.push_sample([data_msg])
-
-                # move robot and update stim
-                if u_cmb is not None:
-                    ef_pose = reachy_robot.move_continuously(u_cmb, ef_pose)
-                    unity_game.move_stim(unity_game.coord_transform(ef_pose))
-
+                unity_game.move_stim(unity_game.coord_transform(ef_pose))
                 last_stim_update_ms = last_move_ms
 
             last_move_ms = pygame.time.get_ticks()
@@ -498,7 +498,8 @@ class ExperimentGuiApp:
         self.marker_stream.push_sample(
             ["rest:obj%d" % self.reach_block["trials"][self.last_trial]]
         )
-        self.logger.warning("Arm stopped")
+        self.logger.warning("Arm stopped, reversing")
+        self.reachy_robot.translate([-1, 0, 0], self.reach_block["reverse_offset"])
 
         # increment and reset trial if last
         self.last_trial += 1
@@ -584,7 +585,9 @@ if __name__ == "__main__":
         rest=OBS_REST_MS,
         start_offset=OFFSET_MS,
     )
-    logger.warning("Observation trials: %s" % ",".join(obs_trials))
+    logger.warning(
+        "Observation trials (%d): %s" % (len(obs_trials), ",".join(obs_trials))
+    )
 
     # reaching block
     obj_subset = sorted(sample(range(len(OBJ_COORDS)), N_OBJ))
@@ -592,13 +595,19 @@ if __name__ == "__main__":
         [sample(obj_subset, len(obj_subset)) for _i in range(REACH_TRIALS)]
     ).reshape(-1)
     logger.warning(
-        "Reaching trials (%s): %s"
+        "Reaching trials %dx(%s): %s"
         % (
+            len(reaching_trials),
             ",".join([str(_o) for _o in obj_subset]),
             ",".join([str(_i) for _i in reaching_trials]),
         )
     )
-    reach_block = dict(trials=reaching_trials, init=INIT_MS, length=REACH_TRIAL_MS)
+    reach_block = dict(
+        trials=reaching_trials,
+        init=INIT_MS,
+        length=REACH_TRIAL_MS,
+        reverse_offset=REVERSE_OFFSET_MS,
+    )
 
     # create shared controller
     shared_controller = SharedController(
