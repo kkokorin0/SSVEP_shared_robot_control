@@ -227,7 +227,7 @@ class ReachyRobot:
         """Update motor goals to move a small step in a given direction
 
         Args:
-            direction (list): [x, y, z]
+            direction (list of float): [x, y, z]
             pose (np.array): [R11 R12 R13 Tx
                               R21 R22 R23 Ty
                               R31 R32 R33 Tz
@@ -272,7 +272,7 @@ class ReachyRobot:
         """Get rotation matrix for forearm orientation
 
         Args:
-            angles (list): list of joint angles
+            angles (list of float): list of joint angles
 
         Returns:
             np.array: [R11, R12, R13,
@@ -304,7 +304,7 @@ class ReachyRobot:
         diration
 
         Args:
-            vel (list): [vx, vy, vz]
+            vel (list of float): [vx, vy, vz]
             duration (int): move duration in ms
 
         Returns:
@@ -355,7 +355,7 @@ class SimRobot(ReachyRobot):
         """Update pose coordinates based on direction
 
         Args:
-            direction (list): [x,y,z] unit vector
+            direction (list of float): [x,y,z] unit vector
             pose (np.array): 4x4 pose matrix
 
         Returns:
@@ -371,7 +371,10 @@ class SimRobot(ReachyRobot):
 
 
 class SharedController:
-    initial_distances = None
+    """Linearly blend user and robot input commands based on a prediction of which object the
+    user wants to interact with"""
+
+    initial_distances = None  # distance to each object on start-up
 
     def __init__(
         self,
@@ -382,28 +385,77 @@ class SharedController:
         median_confidence,
         aggressiveness,
     ):
+        """Store object coordinates and setup assistance parameters
+
+        Args:
+            obj_labels (list of int): object identifiers
+            obj_coords (list of np.array): list of [x,y,z] coordinates
+            collision_d (float): distance to trigger collision (m)
+            max_assistance (float): maximum amount (0-1) of robot control
+            median_confidence (float): confidence (0-1) when assistance is at 50% of max
+            aggressiveness (float): steepness of sigmoid function
+        """
         self.objs = {_l: _c for _l, _c in zip(obj_labels, obj_coords)}
         self.collision_d = collision_d
         self.angle_sum = np.zeros(len(obj_labels))
         self.sigmoid = dict(l=max_assistance, c0=median_confidence, a=aggressiveness)
 
     def reset(self, coords):
+        """Clear cost history and store initial distances to objects
+
+        Args:
+            coords (np.array): end-effector coordinates [x,y,z]
+        """
         self.angle_sum = np.zeros(len(self.objs))
         self.initial_distances = self.get_obj_distances(coords)
 
     def get_obj_distances(self, coords):
+        """Euclidean distance to each object
+
+        Args:
+            coords (np.array): end-effector coordinates [x,y,z]
+
+        Returns:
+            list of float: Distances to each object
+        """
         return [np.linalg.norm(_vec) for _vec in self.get_obj_vectors(coords)]
 
     def get_obj_vectors(self, coords):
+        """Vectors from end-effector to each object
+
+        Args:
+            coords (np.array): end-effector coordinates [x,y,z]
+
+        Returns:
+            list of np.array: list of [x,y,z] vectors
+        """
         return np.array([_obj - coords for _obj in self.objs.values()])
 
     def check_collision(self, coords):
+        """Check if the end-effector is within collision distance of any object
+
+        Args:
+            coords (np.array): end-effector coordinates [x,y,z]
+
+        Returns:
+            int or None: object identifier or None
+        """
         for dist, obj_i in zip(self.get_obj_distances(coords), self.objs.keys()):
             if dist < self.collision_d:
                 return obj_i
         return None
 
     def predict_obj(self, coords, u_user):
+        """Predict which object the user wants to interact with based on the history of angles between their
+        input and the vector to each object
+
+        Args:
+            coords (np.array): end-effector coordinates [x,y,z]
+            u_user (np.array): user control velocity [x,y,z] (unit vector)
+
+        Returns:
+            int, np.array: object identifier, unit vector to object (assistance velocity vector)
+        """
         obj_norm_vec = [
             _vec / np.linalg.norm(_vec) for _vec in self.get_obj_vectors(coords)
         ]
@@ -414,6 +466,15 @@ class SharedController:
         return list(self.objs.keys())[pred_i], obj_norm_vec[pred_i]
 
     def get_confidence(self, obj, coords):
+        """Compute confidence based on the distance to the object
+
+        Args:
+            obj (int): object identifier
+            coords (np.array): end-effector coordinates [x,y,z]
+
+        Returns:
+            float: confidence (0-1)
+        """
         for i, obj_label in enumerate(self.objs.keys()):
             if obj_label == obj:
                 norm_dist = (
@@ -422,9 +483,27 @@ class SharedController:
                 return max(0, 1 - norm_dist)
 
     def get_alpha(self, confidence):
+        """Calculate assistance level based on confidence using a sigmoid function
+
+        Args:
+            confidence (float): prediction confidence (0-1)
+
+        Returns:
+            float: assistance level (0-1)
+        """
         return self.sigmoid["l"] / (
             1 + np.exp(self.sigmoid["a"] * (self.sigmoid["c0"] - confidence))
         )
 
     def get_cmb_vel(self, u_user, u_robot, alpha):
+        """Linearly combine user and robot velocities based on assistance level
+
+        Args:
+            u_user (np.array): [x,y,z] unit velocity vector
+            u_robot (np.array): [x,y,z] unit velocity vector
+            alpha (_type_): assistance level (0-1)
+
+        Returns:
+            np.array: [x,y,z] unit velocity vector
+        """
         return (1 - alpha) * u_user + alpha * u_robot
