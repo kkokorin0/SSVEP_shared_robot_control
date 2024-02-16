@@ -5,40 +5,22 @@ import coloredlogs
 import numpy as np
 
 from robot_control import ReachyRobot, SharedController
+from session_manager import (
+    ALPHA_A,
+    ALPHA_C0,
+    ALPHA_MAX,
+    COLLISION_DIST,
+    FOLDER,
+    MOVE_SPEED_S,
+    OBJ_COORDS,
+    P_ID,
+    REACHY_WIRED,
+    REST_POS,
+    REVERSE_OFFSET_MS,
+    SETUP_POS,
+)
 
-# session
-P_ID = 99  # participant ID
-FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
-
-# robot
-REACHY_WIRED = "169.254.238.100"  # Reachy
-SETUP_POS = [25, 0, 0, -110, 0, -10, 0]  # starting joint angles
-REST_POS = [15, 0, 0, -75, 0, -30, 0]  # arm drop position
-MOVE_SPEED_S = 1  # arm movement duration
-QR_OFFSET = [0.03, -0.01, 0.02]  # fine-tune QR position
-BACK_VEL = [-1, 0, 0]  # backwards direction
-BACK_MOVE_LEN_MS = 2000  # reverse move duration
-
-# environment
 OBJ_SELECTION = 8  # object to reach
-OBJ_COORDS = [
-    np.array([0.420, -0.080, -0.130]),  # top left
-    np.array([0.420, -0.220, -0.130]),  # top middle
-    np.array([0.420, -0.330, -0.130]),  # top right
-    np.array([0.430, -0.080, -0.240]),  # middle left
-    np.array([0.430, -0.230, -0.240]),  # middle middle
-    np.array([0.430, -0.340, -0.240]),  # middle right
-    np.array([0.440, -0.080, -0.350]),  # bottom left
-    np.array([0.440, -0.220, -0.350]),  # bottom middle
-    np.array([0.440, -0.340, -0.350]),  # bottom right
-]
-COLLISION_DIST = 0.02  # object reached distance (m)
-
-# shared controller
-ALPHA_MAX = 0.7  # max proportion of robot assistance
-ALPHA_C0 = 0.5  # confidence for median assistance
-ALPHA_A = 10  # assistance aggressiveness
-
 if __name__ == "__main__":
     session_id = str(P_ID) + "_" + datetime.now().strftime("%Y_%m_%d")
     log_file = FOLDER + "//" + session_id + ".log"
@@ -72,5 +54,5 @@ if __name__ == "__main__":
 
     # move to rest position
     input("Press Enter to move to rest position...")
-    reachy_robot.translate(BACK_VEL, BACK_MOVE_LEN_MS)
+    reachy_robot.translate(np.array([-1, 0, 0]), REVERSE_OFFSET_MS)
     reachy_robot.turn_off(safely=True)

@@ -14,12 +14,12 @@ from robot_control import ReachyRobot, SharedController
 from stimulus import StimController
 
 # session
-P_ID = 99  # participant ID
+P_ID = 97  # participant ID
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
 INIT_MS = 5000  # time to settle at the start of each block/trial
 
 # observation block
-OBS_TRIALS = 5  # trials per direction
+OBS_TRIALS = 5  # per direction
 PROMPT_MS = 2000  # direction prompt
 DELAY_MS = 1000  # prompt jitter
 OBS_TRIAL_MS = 3600  # observation trial duration
@@ -27,8 +27,8 @@ OBS_REST_MS = 2000  # rest period
 OFFSET_MS = 1000  # offset in the opposite direction
 
 # reaching block
-REACH_TRIALS = 1
-N_OBJ = 4  # object subset
+REACH_TRIALS = 3  # per object
+N_OBJ = 4  # object subset size
 OBJ_COORDS = [
     np.array([0.420, -0.080, -0.130]),  # top left
     np.array([0.420, -0.220, -0.130]),  # top middle
@@ -58,7 +58,7 @@ ALPHA_C0 = 0.5  # confidence for median assistance
 ALPHA_A = 10  # assistance aggressiveness
 
 # stimulus
-FREQS = [7, 8, 9, 11, 13]  # top, bottom, left, right, middle (Hz)
+FREQS = [7, 8, 9, 14, 13]  # top, bottom, left, right, middle (Hz)
 STIM_DIST = 0.15  # distance from end-effector (m)
 HOLOLENS_IP = "192.168.137.228"  # HoloLens
 
@@ -83,6 +83,8 @@ global experiment_running  # allow to pause arm movement
 
 
 class ExperimentGuiApp:
+    """GUI for running the experiment session that allows for asynchronous control of the robot"""
+
     port = 12345
 
     # block parameters
@@ -528,6 +530,16 @@ class ExperimentGuiApp:
 
 
 if __name__ == "__main__":
+    """Run an experiment session comrpising of multiple observation blocks and/or reaching block.
+
+    - Observation block: the user observes the robotic arm move in a given direction while the
+        system displays SSVEP stimuli in a cross pattern above the robotic arm and decodes their EEG to
+        predict which direction the user wants the arm to move. With feedback turned on, the arm moves
+        based on the decoder predictions
+
+    - Reaching block: the user actively controls the robotic arm to reach a set of objects in a given order.
+        In shared control mode, the system predicts which object the user wants to reach and assists them
+    """
     pygame.init()  # timer
 
     # logging
