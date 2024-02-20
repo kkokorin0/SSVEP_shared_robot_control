@@ -58,7 +58,7 @@ ALPHA_C0 = 0.5  # confidence for median assistance
 ALPHA_A = 10  # assistance aggressiveness
 
 # stimulus
-FREQS = [7, 8, 9, 14, 13]  # top, bottom, left, right, middle (Hz)
+FREQS = [7, 8, 9, 11, 13]  # top, bottom, left, right, middle (Hz)
 STIM_DIST = 0.15  # distance from end-effector (m)
 HOLOLENS_IP = "192.168.137.228"  # HoloLens
 
@@ -406,7 +406,7 @@ class ExperimentGuiApp:
         # initialise stream and decoder
         self.decoder.flush_stream()
         self.marker_stream.push_sample(
-            ["start run: obs w/%s fb" % ("" if self.observation_fb else "o")]
+            ["start run: OBS%s" % ("" if self.observation_fb else "F")]
         )
         self.logger.critical(
             "Start observation run with%s feedback"
@@ -445,9 +445,8 @@ class ExperimentGuiApp:
             last_move_ms = trial_start_ms
 
             # create online buffer and clear stream
-            if self.observation_fb:
-                self.decoder.clear_buffer()
-                self.decoder.filter_chunk()
+            self.decoder.clear_buffer()
+            self.decoder.filter_chunk()
 
             # move the robot continuously
             while last_move_ms - trial_start_ms < self.obs_block["length"]:
@@ -549,7 +548,11 @@ if __name__ == "__main__":
     # logging
     session_id = str(P_ID) + "_" + datetime.now().strftime("%Y_%m_%d")
     log_file = FOLDER + "//" + session_id + ".log"
-    logging.basicConfig(filename=log_file, level=logging.DEBUG)
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.DEBUG,
+        format="%(asctime)s,%(msecs)03d: %(message)s",
+    )
     coloredlogs.install(level="WARNING", fmt="%(asctime)s,%(msecs)03d: %(message)s")
     logger = logging.getLogger(__name__)
 

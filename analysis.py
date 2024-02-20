@@ -6,6 +6,7 @@ import mne
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from sklearn.metrics import confusion_matrix
 
 from decoding import BandpassFilter, Decoder, extract_events, load_recording, signal
 from session_manager import CMD_MAP, FREQS, FS, HARMONICS, SAMPLE_T_MS, WINDOW_S
@@ -291,40 +292,41 @@ axs[1].set_xlabel("SC-DC")
 sns.despine()
 fig.tight_layout()
 
-# %% Process data offline
+# %% Extract observation run data
+files = ["P99_S2_R1.xdf", "P99_S2_R2.xdf"]
 plot_signals = False
 fmin, fmax = 1, 40
 ep_tmin, ep_tmax = 0, 3.6
-fig, axs = plt.subplots(4, 2, figsize=(6, 8), sharey=False)
 
 X, y = [], []
-for file in os.listdir(folder):
+for file in files:
     # load labrecorder file
-    if file.endswith(".xdf"):
-        raw, events = load_recording(CH_NAMES, folder, file)
-        raw = raw.filter(l_freq=fmin, h_freq=fmax)
+    raw, events = load_recording(CH_NAMES, folder, file)
+    raw = raw.filter(l_freq=fmin, h_freq=fmax)
 
-        if plot_signals:
-            raw.plot()
-            raw.compute_psd(fmin=1, fmax=40).plot()
+    if plot_signals:
+        raw.plot()
+        raw.compute_psd(fmin=1, fmax=40).plot()
 
-        # epoch go trials
-        go_events = extract_events(events, ["go"])
-        epochs = mne.Epochs(
-            raw,
-            [[_e[0], 0, ord(_e[2][-1])] for _e in go_events],
-            baseline=None,
-            tmin=ep_tmin,
-            tmax=ep_tmax,
-            picks="eeg",
-            event_id={_d: ord(_d) for _d in CMDS},
-        )
-        X.append(epochs.get_data(SSVEP_CHS))
-        y.append([chr(_e) for _e in epochs.events[:, -1]])
+    # epoch go trials
+    go_events = extract_events(events, ["go"])
+    epochs = mne.Epochs(
+        raw,
+        [[_e[0], 0, ord(_e[2][-1])] for _e in go_events],
+        baseline=None,
+        tmin=ep_tmin,
+        tmax=ep_tmax,
+        picks="eeg",
+        event_id={_d: ord(_d) for _d in CMDS},
+    )
+    X.append(epochs.get_data(SSVEP_CHS))
+    y.append([chr(_e) for _e in epochs.events[:, -1]])
 
 X, y = np.concatenate(X), np.concatenate(y)
 
-# predict trial stimulus
+# %% Offline decoding predictions
+fig, axs = plt.subplots(2, 5, figsize=(10, 4))
+
 decoder = Decoder(WINDOW_S, FS, HARMONICS, FREQS)
 n_window = int(WINDOW_S * FS)
 n_chunk = int(SAMPLE_T_MS / 1000 * FS)
@@ -342,56 +344,70 @@ for X_i, y_i in zip(X, y):
     preds.append(y_pred_i)
     scores.append(score_i)
 
-# correlations
-ax = axs[0, 0]
-sns.histplot(
-    np.array(scores).reshape((-1, len(FREQS))),
-    stat="count",
-    ax=ax,
-)
-ax.set_xlabel("Correlation score")
-ax.set_xlim([0, 1])
-ax.legend(FREQS)
-axs[0, 1].remove()
-
 # predictions
 correct_preds = np.sum([np.array(_p) == _l for _l, _p in zip(y, preds)], axis=1)
 n_slices = len(preds[0])
 
-# combined
-ax = axs[1, 0]
-sns.histplot(
-    correct_preds / n_slices * 100,
-    stat="count",
-    ax=ax,
-    binwidth=100 / n_slices,
-)
-ax.legend(["all"])
-ax.set_xlabel("")
-ax.set_xlim([0, 100])
-ax.set_ylabel("")
+# scores
+score_df = pd.DataFrame(np.array(scores).reshape((-1, len(CMDS))))
+score_df["label"] = np.repeat(y, n_slices)
+score_df = pd.melt(score_df, id_vars="label")
+score_df["direction"] = [CMDS[_i] for _i in score_df["variable"]]
 
-# by direction
-for letter, ax in zip(CMDS, axs.flatten()[3:]):
+for l_i, letter in enumerate(CMDS):
+
+    # predictions
     sns.histplot(
         (correct_preds / n_slices * 100)[y == letter],
         stat="count",
-        ax=ax,
-        # binwidth = 10
+        ax=axs[0, l_i],
+        binwidth=10,
     )
-    ax.set_xlim([0, 100])
-    ax.set_ylabel("")
-    ax.legend(letter)
+    axs[0, l_i].set_title(letter)
+    axs[0, l_i].set_xlim([0, 100])
+    axs[0, l_i].set_ylim([0, 20])
 
-axs[3, 0].set_xlim([0, 100])
-axs[3, 0].set_xlabel(
-    "Percentage of time steps with\ncorrect predictions ({0:.1f}-{1:.1f}s)".format(
-        n_window / FS, (X_i.shape[1] - n_chunk) / FS
+    # correlations
+    sns.ecdfplot(
+        data=score_df[score_df.label == letter],
+        x="value",
+        hue="direction",
+        hue_order=CMDS,
+        stat="proportion",
+        palette={
+            _l: sns.color_palette("colorblind", len(CMDS))[l_i]
+            for l_i, _l in enumerate(CMDS)
+        },
+        ax=axs[1, l_i],
     )
-)
-axs[3, 0].set_ylabel("Trials")
+    axs[1, l_i].set_xlim([0, 1])
+    axs[1, l_i].set_ylim([0, 1])
+    axs[1, l_i].set_xlabel("Correlation")
+    if l_i != 4:
+        axs[1, l_i].get_legend().remove()
+
+axs[0, 0].set_xlabel("Time steps with correct\npredictions (%)")
+
 sns.despine()
 fig.tight_layout()
+
+# %% Confusion matrix
+fig, axs = plt.subplots(1, 1, figsize=(3, 3))
+conf_mat = confusion_matrix(
+    np.repeat(y, n_slices), np.concatenate(preds), labels=CMDS, normalize="true"
+)
+sns.heatmap(
+    conf_mat,
+    annot=True,
+    fmt=".2f",
+    cmap="Blues",
+    cbar=False,
+    xticklabels=CMDS,
+    yticklabels=CMDS,
+    ax=axs,
+)
+axs.set_xlabel("Predicted")
+axs.set_ylabel("True")
 
 # %% Filtering comparison
 recording_len = 30 * FS
