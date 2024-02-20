@@ -262,6 +262,10 @@ class ExperimentGuiApp:
             "Toggle shared control %s and reset trial index"
             % ("ON" if self.shared_control_on else "OFF")
         )
+        self.logger.warning(
+            "Reaching trials: %s"
+            % ",".join([str(_i) for _i in self.reach_block["trials"]]),
+        )
 
     def obs_feedback_cb(self):
         """Toggle observation block feedback"""
@@ -530,15 +534,15 @@ class ExperimentGuiApp:
 
 
 if __name__ == "__main__":
-    """Run an experiment session comrpising of multiple observation blocks and/or reaching block.
+    """Run an experiment session comprising multiple observation and/or reaching blocks.
 
-    - Observation block: the user observes the robotic arm move in a given direction while the
-        system displays SSVEP stimuli in a cross pattern above the robotic arm and decodes their EEG to
+    - Observation block: the user observes the robotic arm move in a given direction, while the
+        system displays SSVEP stimuli in a cross pattern above the robotic arm, and decodes their EEG to
         predict which direction the user wants the arm to move. With feedback turned on, the arm moves
-        based on the decoder predictions
+        based on the decoder predictions.
 
     - Reaching block: the user actively controls the robotic arm to reach a set of objects in a given order.
-        In shared control mode, the system predicts which object the user wants to reach and assists them
+        In shared control mode, the system predicts which object the user wants to reach and assists them.
     """
     pygame.init()  # timer
 

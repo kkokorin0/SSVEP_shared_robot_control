@@ -37,8 +37,8 @@ SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 
 # %% Extract online results
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Pilot\P99_S05"
-file = r"P99_S5_R1.xdf"
+folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Pilot\P97_S01"
+file = r"P97_S1_R2.xdf"
 
 raw, events = load_recording(CH_NAMES, folder, file)
 session_events = extract_events(
@@ -53,7 +53,7 @@ for ts, _, label in session_events:
         block = label.strip("start run: ")
         block_i += 1
         trial_i = 0
-    elif "go" in label:
+    elif "go:" in label:
         goal = label[-1]
         trial_i += 1
     elif "pred" in label:
@@ -76,7 +76,7 @@ for ts, _, label in session_events:
             alpha = np.nan
             u_robot = [np.nan, np.nan, np.nan]
             u_cmb = [np.nan, np.nan, np.nan]
-            success = goal == pred
+            success = int(goal == pred)
 
         online_results.append(
             [
@@ -132,6 +132,19 @@ online_df = pd.DataFrame(
 )
 online_df.head()
 
+# %% Load data
+online_df = pd.read_csv(folder + "//results.csv", index_col=0)
+online_df["label"] = (
+    online_df.block
+    + " B"
+    + online_df.block_i.map(str)
+    + " T"
+    + online_df.trial.map(str)
+    + " G"
+    + online_df.goal
+)
+online_df.head()
+
 # %% Extract step time and length across all blocks
 fig, axs = plt.subplots(2, 1, figsize=(4, 4), sharex=True, sharey=False)
 
@@ -168,10 +181,11 @@ sns.despine()
 
 # %% Online decoding performance
 fig, axs = plt.subplots(2, 3, figsize=(6, 3), sharex=True, sharey=True)
+obs_df = online_df[online_df.block == "obs w/o fb"].copy()
 
 # summed
-correct_preds = np.array(online_df.groupby(["trial"])["result"].sum())
-total_preds = np.array(online_df.groupby(["trial"])["result"].count())
+correct_preds = np.array(obs_df.groupby(["label"])["success"].sum())
+total_preds = np.array(obs_df.groupby(["label"])["success"].count())
 ax = sns.histplot(
     correct_preds / total_preds * 100, stat="count", ax=axs[0, 0], binwidth=10
 )
@@ -181,19 +195,99 @@ ax.set_xlim([0, 100])
 
 # split by direction
 for letter, ax in zip(CMDS, axs.flatten()[1:]):
-    letter_df = online_df[online_df.goal == letter]
-    correct_preds = np.array(letter_df.groupby(["trial"])["result"].sum())
-    total_preds = np.array(letter_df.groupby(["trial"])["result"].count())
+    letter_df = obs_df[obs_df.goal == letter]
+    correct_preds = np.array(letter_df.groupby(["label"])["success"].sum())
+    total_preds = np.array(letter_df.groupby(["label"])["success"].count())
     sns.histplot(
         correct_preds / total_preds * 100,
         stat="count",
         ax=ax,
-        # binwidth=10,
+        binwidth=10,
     )
     ax.set_ylabel("Trials")
     ax.legend(letter)
 
 axs[1, 0].set_xlabel("Time steps with correct \npredictions (%)")
+sns.despine()
+fig.tight_layout()
+
+# overall accuracy
+fig, axs = plt.subplots(1, 1, figsize=(2, 2))
+acc_rate = (
+    obs_df.groupby(["goal"])["success"].sum()
+    / obs_df.groupby(["goal"])["success"].count()
+)
+acc_rate_df = pd.DataFrame(acc_rate).reset_index()
+sns.barplot(data=acc_rate_df, x="goal", y="success", ax=axs, order=CMDS)
+axs.set_ylabel("Correct time steps (%)")
+axs.set_xlabel("Direction")
+axs.set_ylim([0, 1])
+sns.despine()
+fig.tight_layout()
+
+# %% Reaching performance
+fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharex=True, sharey=False)
+test_df = online_df[online_df.block.isin(["DC", "SC"])].copy()
+
+# failure rate
+successes = pd.DataFrame(test_df.groupby(["label"])["success"].max()).reset_index()
+successes["block"] = successes.label.str[0:5]
+failure_rate = pd.DataFrame(
+    100
+    - successes.groupby(["block"])["success"].sum()
+    / successes.groupby(["block"])["success"].count()
+    * 100,
+).reset_index()
+failure_rate = failure_rate.rename(columns={"success": "rate"})
+sns.pointplot(data=failure_rate, x="block", y="rate", ax=axs[0])
+axs[0].set_ylim([0, 100])
+axs[0].set_ylabel("Failure rate (%)")
+axs[0].set_xlabel("Block")
+
+# trajectory length (successful only)
+lengths = pd.DataFrame(
+    test_df[test_df.success == 1].groupby(["label"])["dL"].sum() / 1000
+).reset_index()
+lengths["block"] = lengths.label.str[0:5]
+lengths["goal"] = lengths.label.str[-1]
+goal_lengths = pd.DataFrame(
+    lengths.groupby(["block", "goal"])["dL"].mean()
+).reset_index()
+sns.pointplot(data=goal_lengths, x="block", y="dL", ax=axs[1])
+axs[1].set_ylabel("Trajectory length (m)")
+axs[1].set_ylim([0, 1])
+axs[1].set_xlabel("Block")
+
+sns.despine()
+fig.tight_layout()
+
+# %% DC - SC
+fig, axs = plt.subplots(1, 2, figsize=(2.5, 2), sharex=True, sharey=False)
+dc_block = "DC B5"
+sc_block = "SC B7"
+
+# failure rate
+sns.barplot(
+    y=failure_rate[failure_rate.block == sc_block].rate.values
+    - failure_rate[failure_rate.block == dc_block].rate.values,
+    ax=axs[0],
+)
+axs[0].set_ylim([-100, 100])
+axs[0].set_ylabel("$\Delta$ Failure rate (%)")
+axs[0].set_xlabel("SC-DC")
+
+# trajectory length
+sns.barplot(
+    y=[
+        goal_lengths[goal_lengths.block == sc_block]["dL"].mean()
+        - goal_lengths[goal_lengths.block == dc_block]["dL"].mean()
+    ],
+    ax=axs[1],
+)
+axs[1].set_ylim([-0.4, 0.4])
+axs[1].set_ylabel("$\Delta$ Trajectory length  (m)")
+axs[1].set_xlabel("SC-DC")
+
 sns.despine()
 fig.tight_layout()
 
