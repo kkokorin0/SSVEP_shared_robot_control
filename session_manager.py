@@ -36,11 +36,13 @@ OBJ_COORDS = [
     np.array([0.430, -0.080, -0.240]),  # middle left
     np.array([0.430, -0.230, -0.240]),  # middle middle
     np.array([0.430, -0.340, -0.240]),  # middle right
-    np.array([0.440, -0.080, -0.350]),  # bottom left
-    np.array([0.440, -0.220, -0.350]),  # bottom middle
-    np.array([0.440, -0.340, -0.350]),  # bottom right
+    np.array([0.450, -0.080, -0.350]),  # bottom left
+    np.array([0.450, -0.220, -0.350]),  # bottom middle
+    np.array([0.450, -0.340, -0.350]),  # bottom right
 ]
-COLLISION_DIST = 0.01  # object reached distance (m)
+OBJ_H = 0.06  # object height (m)
+OBJ_R = 0.023  # object radius (m)
+COLLISION_DIST = 0.02  # object reached distance (m)
 REACH_TRIAL_MS = 30000  # max trial duration
 REVERSE_OFFSET_MS = 2000  # reverse move duration
 
@@ -178,7 +180,7 @@ class ExperimentGuiApp:
         # start reaching trial
         self.start_button = tk.Button(self.setup_frame)
         self.start_button.configure(
-            background=self.green,
+            background=self.orange,
             height=self.button_h,
             overrelief="raised",
             state="normal",
@@ -187,7 +189,7 @@ class ExperimentGuiApp:
             width=self.button_w,
             disabledforeground=self.silver,
             command=self.start_button_cb,
-            activebackground=self.green,
+            activebackground=self.orange,
         )
         self.start_button.place(anchor="nw", x=self.button_x0, y=self.button_y0)
 
@@ -245,7 +247,7 @@ class ExperimentGuiApp:
         # turn off robot
         self.off_button = tk.Button(self.setup_frame)
         self.off_button.configure(
-            activebackground=self.orange,
+            activebackground=self.red,
             background=self.light_grey,
             disabledforeground=self.silver,
             height=self.button_h,
@@ -418,7 +420,7 @@ class ExperimentGuiApp:
         experiment_running = True
         self.obs_button.configure(state="disabled", background=self.light_grey)
         self.start_button.configure(state="disabled", background=self.light_grey)
-        self.off_button.configure(state="normal", background=self.orange)
+        self.off_button.configure(state="normal", background=self.red)
 
         # initialise stream and decoder
         self.decoder.flush_stream()
@@ -509,7 +511,7 @@ class ExperimentGuiApp:
         self.off_button_cb()
 
     def fail_button_cb(self):
-        """Stop the arm at the current position and end the trial"""
+        """Stop the arm at the current position and end the trial wtih a fail flag"""
         global experiment_running
         experiment_running = False
         self.start_button.configure(state="disabled", background=self.light_grey)
@@ -518,6 +520,21 @@ class ExperimentGuiApp:
         self.marker_stream.push_sample(
             ["fail:obj%d" % self.reach_block["trials"][self.last_trial]]
         )
+        self.logger.warning("Fail: Arm stopped, reversing")
+        self.clean_up_trial()
+
+    def success_button_cb(self):
+        """Stop the arm at the current position and end the trial with a success flag"""
+        global experiment_running
+        experiment_running = False
+        self.start_button.configure(state="disabled", background=self.light_grey)
+        self.obs_button.configure(state="disabled", background=self.light_grey)
+
+        goal_obj = self.reach_block["trials"][self.last_trial]
+        self.marker_stream.push_sample(
+            ["reach:obj%d goal:obj%d" % (goal_obj, goal_obj)]
+        )
+        self.logger.warning("Success: Arm stopped, reversing")
         self.clean_up_trial()
 
     def clean_up_trial(self):
@@ -527,7 +544,6 @@ class ExperimentGuiApp:
         self.marker_stream.push_sample(
             ["rest:obj%d" % self.reach_block["trials"][self.last_trial]]
         )
-        self.logger.warning("Arm stopped, reversing")
         self.reachy_robot.translate([-1, 0, 0], self.reach_block["reverse_offset"])
 
         # increment and reset trial if last
@@ -553,7 +569,7 @@ class ExperimentGuiApp:
         self.reachy_robot.turn_off(safely=True)
         self.logger.warning("Arm reset and turned off")
 
-        self.start_button.configure(state="normal", background=self.green)
+        self.start_button.configure(state="normal", background=self.orange)
         self.obs_button.configure(state="normal", background=self.yellow)
 
 
@@ -576,7 +592,7 @@ if __name__ == "__main__":
     logging.basicConfig(
         filename=log_file,
         level=logging.DEBUG,
-        format="%(asctime)s,%(msecs)03d: %(message)s",
+        format="%(asctime)s: %(message)s",
     )
     coloredlogs.install(level="WARNING", fmt="%(asctime)s,%(msecs)03d: %(message)s")
     logger = logging.getLogger(__name__)
@@ -657,6 +673,8 @@ if __name__ == "__main__":
     shared_controller = SharedController(
         obj_labels=obj_subset,
         obj_coords=[OBJ_COORDS[_i] for _i in obj_subset],
+        obj_h=OBJ_H,
+        obj_r=OBJ_R,
         collision_d=COLLISION_DIST,
         max_assistance=ALPHA_MAX,
         median_confidence=ALPHA_C0,

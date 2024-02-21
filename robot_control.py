@@ -3,15 +3,6 @@ from math import cos, pi, sin
 
 import numpy as np
 import pygame
-from fcl import (
-    CollisionObject,
-    CollisionRequest,
-    CollisionResult,
-    Cylinder,
-    Sphere,
-    Transform,
-    collide,
-)
 from reachy_sdk import ReachySDK
 from reachy_sdk.trajectory import goto
 from reachy_sdk.trajectory.interpolation import InterpolationMode
@@ -410,12 +401,12 @@ class SharedController:
         """
         self.objs = {_l: _c for _l, _c in zip(obj_labels, obj_coords)}
         self.obj_bodies = [self.create_cylinder(_c, obj_h, obj_r) for _c in obj_coords]
-        self.effector_body = CollisionObject(Sphere(collision_d), Transform())
+        self.collision_d = collision_d
         self.angle_sum = np.zeros(len(obj_labels))
         self.sigmoid = dict(l=max_assistance, c0=median_confidence, a=aggressiveness)
 
     def create_cylinder(self, coords, h, r):
-        """Create cylinder collision object
+        """Define a simplified model of the cylinder as two points along its axis
 
         Args:
             coords (np.array): [x,y,z] centroid coordinates
@@ -423,11 +414,9 @@ class SharedController:
             r (float): radius (m)
 
         Returns:
-            CollisionObject: cylinder located at coordinates
+            list of np.array: points that define collision with the cylinder
         """
-        tf = Transform(np.eye(3), coords)
-        cyl = Cylinder(r, h)
-        return CollisionObject(cyl, tf)
+        return [coords - np.array([0, 0, h / 6]), coords + np.array([0, 0, h / 6])]
 
     def reset(self, coords):
         """Clear cost history and store initial distances to objects
@@ -469,14 +458,10 @@ class SharedController:
         Returns:
             int or None: object identifier or None
         """
-
-        self.effector_body.setTranslation(coords)
-        for obj_i, obj_body in zip(self.obj_bodies, self.objs.keys()):
-            collision_pts = collide(
-                obj_body, self.effector_body, CollisionRequest(), CollisionResult()
-            )
-            if collision_pts > 0:
-                return obj_i
+        for obj_i, obj_body in zip(self.objs.keys(), self.obj_bodies):
+            for pt in obj_body:
+                if np.linalg.norm(pt - coords) < self.collision_d:
+                    return obj_i
         return None
 
     def predict_obj(self, coords, u_user):
