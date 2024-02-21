@@ -3,6 +3,15 @@ from math import cos, pi, sin
 
 import numpy as np
 import pygame
+from fcl import (
+    CollisionObject,
+    CollisionRequest,
+    CollisionResult,
+    Cylinder,
+    Sphere,
+    Transform,
+    collide,
+)
 from reachy_sdk import ReachySDK
 from reachy_sdk.trajectory import goto
 from reachy_sdk.trajectory.interpolation import InterpolationMode
@@ -380,6 +389,8 @@ class SharedController:
         self,
         obj_labels,
         obj_coords,
+        obj_h,
+        obj_r,
         collision_d,
         max_assistance,
         median_confidence,
@@ -390,15 +401,33 @@ class SharedController:
         Args:
             obj_labels (list of int): object identifiers
             obj_coords (list of np.array): list of [x,y,z] coordinates
+            obj_h (float): object height (m)
+            obj_r (float): object radius (m)
             collision_d (float): distance to trigger collision (m)
             max_assistance (float): maximum amount (0-1) of robot control
             median_confidence (float): confidence (0-1) when assistance is at 50% of max
             aggressiveness (float): steepness of sigmoid function
         """
         self.objs = {_l: _c for _l, _c in zip(obj_labels, obj_coords)}
-        self.collision_d = collision_d
+        self.obj_bodies = [self.create_cylinder(_c, obj_h, obj_r) for _c in obj_coords]
+        self.effector_body = CollisionObject(Sphere(collision_d), Transform())
         self.angle_sum = np.zeros(len(obj_labels))
         self.sigmoid = dict(l=max_assistance, c0=median_confidence, a=aggressiveness)
+
+    def create_cylinder(self, coords, h, r):
+        """Create cylinder collision object
+
+        Args:
+            coords (np.array): [x,y,z] centroid coordinates
+            h (float): height (m)
+            r (float): radius (m)
+
+        Returns:
+            CollisionObject: cylinder located at coordinates
+        """
+        tf = Transform(np.eye(3), coords)
+        cyl = Cylinder(r, h)
+        return CollisionObject(cyl, tf)
 
     def reset(self, coords):
         """Clear cost history and store initial distances to objects
@@ -432,7 +461,7 @@ class SharedController:
         return np.array([_obj - coords for _obj in self.objs.values()])
 
     def check_collision(self, coords):
-        """Check if the end-effector is within collision distance of any object
+        """Check if the end-effector has collided with any object
 
         Args:
             coords (np.array): end-effector coordinates [x,y,z]
@@ -440,8 +469,13 @@ class SharedController:
         Returns:
             int or None: object identifier or None
         """
-        for dist, obj_i in zip(self.get_obj_distances(coords), self.objs.keys()):
-            if dist < self.collision_d:
+
+        self.effector_body.setTranslation(coords)
+        for obj_i, obj_body in zip(self.obj_bodies, self.objs.keys()):
+            collision_pts = collide(
+                obj_body, self.effector_body, CollisionRequest(), CollisionResult()
+            )
+            if collision_pts > 0:
                 return obj_i
         return None
 

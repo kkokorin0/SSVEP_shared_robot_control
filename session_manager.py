@@ -14,7 +14,7 @@ from robot_control import ReachyRobot, SharedController
 from stimulus import StimController
 
 # session
-P_ID = 97  # participant ID
+P_ID = 99  # participant ID
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
 INIT_MS = 5000  # time to settle at the start of each block/trial
 
@@ -40,7 +40,7 @@ OBJ_COORDS = [
     np.array([0.440, -0.220, -0.350]),  # bottom middle
     np.array([0.440, -0.340, -0.350]),  # bottom right
 ]
-COLLISION_DIST = 0.03  # object reached distance (m)
+COLLISION_DIST = 0.01  # object reached distance (m)
 REACH_TRIAL_MS = 30000  # max trial duration
 REVERSE_OFFSET_MS = 2000  # reverse move duration
 
@@ -191,6 +191,39 @@ class ExperimentGuiApp:
         )
         self.start_button.place(anchor="nw", x=self.button_x0, y=self.button_y0)
 
+        # stop robot motion with fail or success flag
+        self.fail_button = tk.Button(self.setup_frame)
+        self.fail_button.configure(
+            activebackground=self.red,
+            background=self.light_grey,
+            disabledforeground=self.silver,
+            height=self.button_h,
+            overrelief="raised",
+            state="disabled",
+            text="Fail",
+            width=self.button_w,
+            command=self.fail_button_cb,
+        )
+        self.fail_button.place(
+            anchor="nw", x=self.button_x0, y=self.button_y0 + self.button_dy
+        )
+
+        self.success_button = tk.Button(self.setup_frame)
+        self.success_button.configure(
+            activebackground=self.green,
+            background=self.light_grey,
+            disabledforeground=self.silver,
+            height=self.button_h,
+            overrelief="raised",
+            state="disabled",
+            text="Pass",
+            width=self.button_w,
+            command=self.success_button_cb,
+        )
+        self.success_button.place(
+            anchor="nw", x=self.button_x0, y=self.button_y0 + 2 * self.button_dy
+        )
+
         # start observation block
         self.obs_button = tk.Button(self.setup_frame)
         self.obs_button.configure(
@@ -206,25 +239,6 @@ class ExperimentGuiApp:
             activebackground=self.yellow,
         )
         self.obs_button.place(
-            anchor="nw",
-            x=self.button_x0 + self.button_dx,
-            y=self.button_y0 + self.button_dy,
-        )
-
-        # stop robot motion
-        self.stop_button = tk.Button(self.setup_frame)
-        self.stop_button.configure(
-            activebackground=self.red,
-            background=self.light_grey,
-            disabledforeground=self.silver,
-            height=self.button_h,
-            overrelief="raised",
-            state="disabled",
-            text="Stop",
-            width=self.button_w,
-            command=self.stop_button_cb,
-        )
-        self.stop_button.place(
             anchor="nw", x=self.button_x0 + self.button_dx, y=self.button_y0
         )
 
@@ -242,7 +256,9 @@ class ExperimentGuiApp:
             command=self.off_button_cb,
         )
         self.off_button.place(
-            anchor="nw", x=self.button_x0, y=self.button_y0 + self.button_dy
+            anchor="nw",
+            x=self.button_x0 + self.button_dx,
+            y=self.button_y0 + self.button_dy,
         )
 
         # main widget
@@ -281,7 +297,8 @@ class ExperimentGuiApp:
         experiment_running = True
         self.start_button.configure(state="disabled", background=self.light_grey)
         self.obs_button.configure(state="disabled", background=self.light_grey)
-        self.stop_button.configure(state="normal", background=self.red)
+        self.fail_button.configure(state="normal", background=self.red)
+        self.success_button.configure(state="normal", background=self.green)
 
         # first trial in block
         if self.last_trial == 0:
@@ -392,7 +409,7 @@ class ExperimentGuiApp:
 
             last_move_ms = pygame.time.get_ticks()
 
-        self.stop_button_cb()
+        self.success_button_cb()
 
     def obs_button_cb(self):
         """Observe the robotic arm move in a given direction and decode EEG data. With feedback turned on
@@ -491,14 +508,21 @@ class ExperimentGuiApp:
         )
         self.off_button_cb()
 
-    def stop_button_cb(self):
+    def fail_button_cb(self):
         """Stop the arm at the current position and end the trial"""
         global experiment_running
         experiment_running = False
         self.start_button.configure(state="disabled", background=self.light_grey)
         self.obs_button.configure(state="disabled", background=self.light_grey)
 
-        # rest while resetting the arm/stim
+        self.marker_stream.push_sample(
+            ["fail:obj%d" % self.reach_block["trials"][self.last_trial]]
+        )
+        self.clean_up_trial()
+
+    def clean_up_trial(self):
+        """Reset the arm and stimuli"""
+        # rest while resetting
         self.unity_game.turn_off_stim()
         self.marker_stream.push_sample(
             ["rest:obj%d" % self.reach_block["trials"][self.last_trial]]
@@ -522,7 +546,8 @@ class ExperimentGuiApp:
 
     def off_button_cb(self):
         """Reset the arm and turn it off"""
-        self.stop_button.configure(state="disabled", background=self.light_grey)
+        self.fail_button.configure(state="disabled", background=self.light_grey)
+        self.success_button.configure(state="disabled", background=self.light_grey)
         self.off_button.configure(state="disabled", background=self.light_grey)
 
         self.reachy_robot.turn_off(safely=True)
