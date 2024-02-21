@@ -8,6 +8,7 @@ import coloredlogs
 import numpy as np
 import pygame
 from pylsl import StreamInfo, StreamInlet, StreamOutlet, resolve_byprop
+from scipy.stats import uniform_direction
 
 from decoding import BandpassFilter, OnlineDecoder
 from robot_control import ReachyRobot, SharedController
@@ -45,6 +46,7 @@ OBJ_R = 0.023  # object radius (m)
 COLLISION_DIST = 0.02  # object reached distance (m)
 REACH_TRIAL_MS = 30000  # max trial duration
 REVERSE_OFFSET_MS = 2000  # reverse move duration
+INIT_JITTER_MS = 1000  # jitter end-effector on initialisation
 
 # control
 SAMPLE_T_MS = 200
@@ -325,6 +327,10 @@ class ExperimentGuiApp:
 
         # setup arm and start flashing
         ef_pose = self.reachy_robot.setup()
+        ef_pose = self.reachy_robot.translate(
+            self.reach_block["jitter_v"],
+            self.reach_block["init_jitter"],
+        )
         unity_game.turn_on_stim(ef_pose)
         self.marker_stream.push_sample(["go:obj%d" % goal_obj])
         trial_start_ms = pygame.time.get_ticks()
@@ -665,6 +671,8 @@ if __name__ == "__main__":
     reach_block = dict(
         trials=reaching_trials,
         init=INIT_MS,
+        init_jitter=INIT_JITTER_MS,
+        jitter_v=uniform_direction.rvs(3, random_state=P_ID),
         length=REACH_TRIAL_MS,
         reverse_offset=REVERSE_OFFSET_MS,
     )
