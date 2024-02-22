@@ -603,10 +603,14 @@ if __name__ == "__main__":
     coloredlogs.install(level="WARNING", fmt="%(asctime)s,%(msecs)03d: %(message)s")
     logger = logging.getLogger(__name__)
 
-    # comms
+    # robot
     reachy_robot = ReachyRobot(REACHY_WIRED, logger, SETUP_POS, REST_POS, MOVE_SPEED_S)
     reachy_robot.turn_off(safely=True)
-    unity_game = StimController(HOLOLENS_IP, logger, QR_OFFSET, FREQS, STIM_DIST)
+
+    # stimuli
+    seed(P_ID)
+    p_freqs = sample(FREQS, len(FREQS))
+    unity_game = StimController(HOLOLENS_IP, logger, QR_OFFSET, p_freqs, STIM_DIST)
     unity_game.turn_off_stim()
 
     # setup marker stream
@@ -617,7 +621,7 @@ if __name__ == "__main__":
         logger.critical("Streams not set up, exiting")
     marker_stream.push_sample(["start session"])
     marker_stream.push_sample(
-        ["P%d freqs:%s" % (P_ID, ",".join(str(_f) for _f in FREQS))]
+        ["P%d freqs:%s" % (P_ID, ",".join(str(_f) for _f in p_freqs))]
     )
 
     # find EEG stream and build online decoder
@@ -629,7 +633,7 @@ if __name__ == "__main__":
         window=WINDOW_S,
         fs=FS,
         harmonics=HARMONICS,
-        stim_freqs=FREQS,
+        stim_freqs=p_freqs,
         n_ch=N_CH,
         online_filter=bp_filter,
         eeg_stream=StreamInlet(eeg_streams[0]),
@@ -638,7 +642,6 @@ if __name__ == "__main__":
     )
 
     # observation block
-    seed(P_ID)
     obs_trials = np.array(
         [sample(list(CMD_MAP.keys()), len(CMD_MAP)) for _i in range(OBS_TRIALS)]
     ).reshape(-1)
