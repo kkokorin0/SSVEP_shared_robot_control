@@ -15,7 +15,7 @@ from robot_control import ReachyRobot, SharedController
 from stimulus import StimController
 
 # session
-P_ID = 99  # participant ID
+P_ID = 98  # participant ID
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
 INIT_MS = 5000  # time to settle at the start of each block/trial
 
@@ -28,7 +28,7 @@ OBS_REST_MS = 2000  # rest period
 OFFSET_MS = 1000  # offset in the opposite direction
 
 # reaching block
-REACH_TRIALS = 3  # per object
+REACH_TRIALS = 2  # per object
 N_OBJ = 4  # object subset size
 OBJ_COORDS = [
     np.array([0.420, -0.080, -0.130]),  # top left
@@ -344,10 +344,13 @@ class ExperimentGuiApp:
 
         # move the robot continuously
         u_cmb = None
-        while last_move_ms - trial_start_ms < self.reach_block["length"]:
+        while True:
             # stop button pressed
             if not experiment_running:
                 return
+            # trial too long
+            elif last_move_ms - trial_start_ms < self.reach_block["length"]:
+                self.fail_button_cb()
 
             # update GUI and move the robot
             self.toplevel.update()
