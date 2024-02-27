@@ -28,7 +28,7 @@ OBS_REST_MS = 2000  # rest period
 OFFSET_MS = 1000  # offset in the opposite direction
 
 # reaching block
-REACH_TRIALS = 2  # per object
+REACH_TRIALS = 3  # per object
 N_OBJ = 4  # object subset size
 OBJ_COORDS = [
     np.array([0.420, -0.080, -0.130]),  # top left
@@ -349,7 +349,7 @@ class ExperimentGuiApp:
             if not experiment_running:
                 return
             # trial too long
-            elif last_move_ms - trial_start_ms < self.reach_block["length"]:
+            elif last_move_ms - trial_start_ms > self.reach_block["length"]:
                 self.fail_button_cb()
 
             # update GUI and move the robot
@@ -434,7 +434,7 @@ class ExperimentGuiApp:
         # initialise stream and decoder
         self.decoder.flush_stream()
         self.marker_stream.push_sample(
-            ["start run: OBS%s" % ("" if self.observation_fb else "F")]
+            ["start run: OBS%s" % ("F" if self.observation_fb else "")]
         )
         self.logger.critical(
             "Start observation run with%s feedback"
@@ -511,7 +511,7 @@ class ExperimentGuiApp:
             pygame.time.delay(obs_block["rest"])
 
         self.marker_stream.push_sample(
-            ["end run: obs w/%s fb" % ("" if self.observation_fb else "o")]
+            ["end run: OBS%s" % ("F" if self.observation_fb else "")]
         )
         self.logger.critical(
             "End observation run with%s feedback"

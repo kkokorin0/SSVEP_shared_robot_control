@@ -1,15 +1,17 @@
 # %% Packages
 import os
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import mne
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from mpl_toolkits import mplot3d
 from sklearn.metrics import confusion_matrix
 
 from decoding import BandpassFilter, Decoder, extract_events, load_recording, signal
-from session_manager import CMD_MAP, FREQS, FS, HARMONICS, SAMPLE_T_MS, WINDOW_S
+from session_manager import CMD_MAP, FS, HARMONICS, SAMPLE_T_MS, WINDOW_S
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -38,74 +40,77 @@ SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 
 # %% Extract online results
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Pilot\P97_S01"
-file = r"P97_S1_R2.xdf"
+folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Pilot\P96_S01"
 
-raw, events = load_recording(CH_NAMES, folder, file)
-session_events = extract_events(
-    events, ["Freqs", "start run", "end run", "go", "pred", "reach"]
-)
-
-p_id = session_events[0][-1].split(" ")[0]
-online_results = []
 block_i = 0
-for ts, _, label in session_events:
-    if "start run" in label:
-        block = label.strip("start run: ")
-        block_i += 1
-        trial_i = 0
-    elif "go:" in label:
-        goal = label[-1]
-        trial_i += 1
-    elif "pred" in label:
-        pred = label[-1]
-        tokens = label.split(" ")
-        coords = [float(_c) for _c in tokens[0][2:].split(",")]
-        pred = tokens[1][-1]
-
-        # test run only
-        if block in ["DC", "SC"]:
-            pred_obj = int(tokens[2][-1])
-            confidence = float(tokens[3][5:])
-            alpha = float(tokens[4][6:])
-            u_robot = [float(_c) for _c in tokens[5][8:].split(",")]
-            u_cmb = [float(_c) for _c in tokens[6][6:].split(",")]
-            success = 0  # assume fail unless reached flag found
-        else:
-            pred_obj = np.nan
-            confidence = np.nan
-            alpha = np.nan
-            u_robot = [np.nan, np.nan, np.nan]
-            u_cmb = [np.nan, np.nan, np.nan]
-            success = int(goal == pred)
-
-        online_results.append(
-            [
-                block_i,
-                block,
-                trial_i,
-                ts,
-                goal,
-                success,
-                coords[0],
-                coords[1],
-                coords[2],
-                pred,
-                pred_obj,
-                confidence,
-                alpha,
-                u_robot[0],
-                u_robot[1],
-                u_robot[2],
-                u_cmb[0],
-                u_cmb[1],
-                u_cmb[2],
-            ]
+online_results = []
+for file in os.listdir(folder):
+    if file.endswith(".xdf"):
+        raw, events = load_recording(CH_NAMES, folder, file)
+        session_events = extract_events(
+            events, ["freqs", "start run", "end run", "go", "pred", "reach"]
         )
-    elif "reach" in label:
-        if label.split(" ")[1][-1] == goal:
-            # TODO iterate backwards and set success to 1 for just this trial
-            pass
+
+        p_id, freq_str = session_events[0][-1].split(" ")
+        freqs = [int(_f) for _f in freq_str.strip("freqs:").split(",")]
+        for ts, _, label in session_events:
+            if "start run" in label:
+                block = label.strip("start run: ")
+                block_i += 1
+                trial_i = 0
+            elif "go:" in label:
+                goal = label[-1]
+                trial_i += 1
+                trial_start_row = len(online_results)
+            elif "pred" in label:
+                pred = label[-1]
+                tokens = label.split(" ")
+                coords = [float(_c) for _c in tokens[0][2:].split(",")]
+                pred = tokens[1][-1]
+
+                # test run only
+                if block in ["DC", "SC"]:
+                    pred_obj = int(tokens[2][-1])
+                    confidence = float(tokens[3][5:])
+                    alpha = float(tokens[4][6:])
+                    u_robot = [float(_c) for _c in tokens[5][8:].split(",")]
+                    u_cmb = [float(_c) for _c in tokens[6][6:].split(",")]
+                    success = 0  # assume fail unless reached flag found
+                else:
+                    pred_obj = np.nan
+                    confidence = np.nan
+                    alpha = np.nan
+                    u_robot = [np.nan, np.nan, np.nan]
+                    u_cmb = [np.nan, np.nan, np.nan]
+                    success = int(goal == pred)
+
+                online_results.append(
+                    [
+                        block_i,
+                        block,
+                        trial_i,
+                        ts,
+                        goal,
+                        success,
+                        coords[0],
+                        coords[1],
+                        coords[2],
+                        pred,
+                        pred_obj,
+                        confidence,
+                        alpha,
+                        u_robot[0],
+                        u_robot[1],
+                        u_robot[2],
+                        u_cmb[0],
+                        u_cmb[1],
+                        u_cmb[2],
+                    ]
+                )
+            elif "reach" in label:
+                if label.split(" ")[1][-1] == goal:
+                    for row in online_results[trial_start_row : len(online_results)]:
+                        row[5] = 1
 
 online_df = pd.DataFrame(
     online_results,
@@ -132,9 +137,11 @@ online_df = pd.DataFrame(
     ],
 )
 online_df.head()
+online_df.to_csv(folder + "//results_%s.csv" % datetime.now().strftime("%Y%m%d_%H%M%S"))
 
 # %% Load data
-online_df = pd.read_csv(folder + "//results.csv", index_col=0)
+results = "results_20240227_101820.csv"
+online_df = pd.read_csv(folder + "//" + results, index_col=0)
 online_df["label"] = (
     online_df.block
     + " B"
@@ -182,7 +189,7 @@ sns.despine()
 
 # %% Online decoding performance
 fig, axs = plt.subplots(2, 3, figsize=(6, 3), sharex=True, sharey=True)
-obs_df = online_df[online_df.block == "obs w/o fb"].copy()
+obs_df = online_df[online_df.block == "OBSF"].copy()
 
 # summed
 correct_preds = np.array(obs_df.groupby(["label"])["success"].sum())
@@ -226,6 +233,24 @@ axs.set_ylim([0, 1])
 sns.despine()
 fig.tight_layout()
 
+# confusion matrix
+fig, axs = plt.subplots(1, 1, figsize=(3, 3))
+conf_mat = confusion_matrix(
+    obs_df["goal"], obs_df["pred"], labels=CMDS, normalize="true"
+)
+sns.heatmap(
+    conf_mat,
+    annot=True,
+    fmt=".2f",
+    cmap="Blues",
+    cbar=False,
+    xticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
+    yticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
+    ax=axs,
+)
+axs.set_xlabel("Predicted")
+axs.set_ylabel("True")
+
 # %% Reaching performance
 fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharex=True, sharey=False)
 test_df = online_df[online_df.block.isin(["DC", "SC"])].copy()
@@ -262,10 +287,30 @@ axs[1].set_xlabel("Block")
 sns.despine()
 fig.tight_layout()
 
+# %% End-effector starting position in reaching trials
+start_pos_df = test_df[test_df.dL == 0]
+
+fig = plt.figure(figsize=(10, 7))
+ax = plt.axes(projection="3d")
+
+for label in test_df.label.unique():
+    col = "r" if "DC" in label else "b"
+    traj = np.array(test_df[test_df.label == label][["x", "y", "z"]])
+    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col)
+    ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], "kx")
+
+ax.set_xlim([0, 0.5])
+ax.set_xlabel("x (m)")
+ax.set_ylim([-0.5, 0])
+ax.set_ylabel("y (m)")
+ax.set_zlim([-0.5, 0])
+ax.set_zlabel("z (m)")
+plt.show()
+
 # %% DC - SC
 fig, axs = plt.subplots(1, 2, figsize=(2.5, 2), sharex=True, sharey=False)
-dc_block = "DC B5"
-sc_block = "SC B7"
+dc_block = "DC B6"
+sc_block = "SC B4"
 
 # failure rate
 sns.barplot(
@@ -293,7 +338,7 @@ sns.despine()
 fig.tight_layout()
 
 # %% Extract observation run data
-files = ["P99_S2_R1.xdf", "P99_S2_R2.xdf"]
+files = ["P96_S1_R1.xdf"]
 plot_signals = False
 fmin, fmax = 1, 40
 ep_tmin, ep_tmax = 0, 3.6
@@ -327,7 +372,7 @@ X, y = np.concatenate(X), np.concatenate(y)
 # %% Offline decoding predictions
 fig, axs = plt.subplots(2, 5, figsize=(10, 4))
 
-decoder = Decoder(WINDOW_S, FS, HARMONICS, FREQS)
+decoder = Decoder(WINDOW_S, FS, HARMONICS, freqs)
 n_window = int(WINDOW_S * FS)
 n_chunk = int(SAMPLE_T_MS / 1000 * FS)
 
@@ -402,8 +447,8 @@ sns.heatmap(
     fmt=".2f",
     cmap="Blues",
     cbar=False,
-    xticklabels=CMDS,
-    yticklabels=CMDS,
+    xticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
+    yticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
     ax=axs,
 )
 axs.set_xlabel("Predicted")
