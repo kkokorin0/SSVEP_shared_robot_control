@@ -364,11 +364,12 @@ class ExperimentGuiApp:
                 self.marker_stream.push_sample(
                     ["reach:obj%d goal:obj%d" % (reached_obj, goal_obj)]
                 )
-                self.logger.critical(
-                    "%s: Reached object %d"
-                    % ("Success" if reached_obj == goal_obj else "Fail", reached_obj)
-                )
-                break
+                if reached_obj == goal_obj:
+                    self.logger.critical("Success: Reached object %d" % reached_obj)
+                    self.success_button_cb()
+                else:
+                    self.logger.critical("Fail: Reached object %d" % reached_obj)
+                    self.fail_button_cb()
 
             # get new control command every sample_t
             if last_move_ms - last_stim_update_ms > self.sample_t:
@@ -419,8 +420,6 @@ class ExperimentGuiApp:
                 last_stim_update_ms = last_move_ms
 
             last_move_ms = pygame.time.get_ticks()
-
-        self.success_button_cb()
 
     def obs_button_cb(self):
         """Observe the robotic arm move in a given direction and decode EEG data. With feedback turned on
