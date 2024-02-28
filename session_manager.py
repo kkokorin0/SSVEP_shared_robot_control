@@ -44,7 +44,7 @@ OBJ_COORDS = [
 OBJ_H = 0.06  # object height (m)
 OBJ_R = 0.023  # object radius (m)
 COLLISION_DIST = 0.02  # object reached distance (m)
-REACH_TRIAL_MS = 30000  # max trial duration
+REACH_TRIAL_MS = 40000  # max trial duration
 REVERSE_OFFSET_MS = 2000  # reverse move duration
 INIT_JITTER_MS = 1000  # jitter end-effector on initialisation
 
