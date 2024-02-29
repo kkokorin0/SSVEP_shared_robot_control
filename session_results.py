@@ -94,6 +94,7 @@ for file in os.listdir(folder):
 
                 online_results.append(
                     [
+                        p_id,
                         block_i,
                         block,
                         trial_i,
@@ -123,6 +124,7 @@ for file in os.listdir(folder):
 online_df = pd.DataFrame(
     online_results,
     columns=[
+        "p_id",
         "block_i",
         "block",
         "trial",
@@ -145,7 +147,9 @@ online_df = pd.DataFrame(
     ],
 )
 online_df.head()
-online_df.to_csv(folder + "//results_%s.csv" % datetime.now().strftime("%Y%m%d_%H%M%S"))
+online_df.to_csv(
+    folder + "//P%d_results_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
+)
 
 # %% Load data
 results = "results_20240228_161226.csv"
