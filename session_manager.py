@@ -133,6 +133,22 @@ class ExperimentGuiApp:
         shared_controller,
         master=None,
     ):
+        """GUI for controlling the experiment session used to run the observation block
+        or individual reaching trials.
+
+        Args:
+            logger (logger): log messages to console/file
+            sample_t (float): sample time (ms) for BCI commands and stimulus updates
+            obs_block (dict): block parameters (trials, init, prompt, delay, length, rest, start_offset)
+            reach_block (dict): block parameters (trials, init, init_jitter, jitter_v, length, reverse_offset)
+            cmd_map (dict): map letter to unit vector
+            reachy_robot (ReachyRobot): robot
+            unity_game (StimController): HoloLens controller
+            marker_stream (StreamOutlet): stream events to LSL
+            decoder (OnlineDecoder): process EEG data and generate BCI commands
+            shared_controller (SharedController): predict target object and produce assistance command
+            master (process, optional): master process. Defaults to None.
+        """
         # experiment parameters
         self.sample_t = sample_t
         self.obs_block = obs_block
