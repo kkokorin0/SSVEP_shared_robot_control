@@ -368,8 +368,7 @@ class ExperimentGuiApp:
             elif last_move_ms - trial_start_ms > self.reach_block["length"]:
                 self.fail_button_cb()
 
-            # update GUI and move the robot
-            self.toplevel.update()
+            # move the robot
             if u_cmb is not None:
                 ef_pose = reachy_robot.move_continuously(u_cmb, ef_pose)
             data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
@@ -381,14 +380,14 @@ class ExperimentGuiApp:
                     ["reach:obj%d goal:obj%d" % (reached_obj, goal_obj)]
                 )
                 if reached_obj == goal_obj:
-                    self.logger.critical("Success: Reached object %d" % reached_obj)
                     self.success_button_cb()
                 else:
-                    self.logger.critical("Fail: Reached object %d" % reached_obj)
                     self.fail_button_cb()
 
             # get new control command every sample_t
             if last_move_ms - last_stim_update_ms > self.sample_t:
+                self.toplevel.update()
+
                 # decode EEG chunk
                 self.decoder.update_buffer()
                 pred_i = self.decoder.predict_online()
@@ -541,10 +540,9 @@ class ExperimentGuiApp:
         self.start_button.configure(state="disabled", background=self.light_grey)
         self.obs_button.configure(state="disabled", background=self.light_grey)
 
-        self.marker_stream.push_sample(
-            ["fail:obj%d" % self.reach_block["trials"][self.last_trial]]
-        )
-        self.logger.warning("Fail: Arm stopped, reversing")
+        goal_obj = self.reach_block["trials"][self.last_trial]
+        self.marker_stream.push_sample(["fail:obj%d" % goal_obj])
+        self.logger.critical("Fail: object %d" % goal_obj)
         self.clean_up_trial()
 
     def success_button_cb(self):
@@ -555,10 +553,8 @@ class ExperimentGuiApp:
         self.obs_button.configure(state="disabled", background=self.light_grey)
 
         goal_obj = self.reach_block["trials"][self.last_trial]
-        self.marker_stream.push_sample(
-            ["reach:obj%d goal:obj%d" % (goal_obj, goal_obj)]
-        )
-        self.logger.warning("Success: Arm stopped, reversing")
+        self.marker_stream.push_sample(["success:obj%d" % goal_obj])
+        self.logger.critical("Success: object %d" % goal_obj)
         self.clean_up_trial()
 
     def clean_up_trial(self):
@@ -568,6 +564,7 @@ class ExperimentGuiApp:
         self.marker_stream.push_sample(
             ["rest:obj%d" % self.reach_block["trials"][self.last_trial]]
         )
+        self.logger.warning("Arm stopped, reversing")
         self.reachy_robot.translate([-1, 0, 0], self.reach_block["reverse_offset"])
 
         # increment and reset trial if last
