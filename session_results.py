@@ -3,23 +3,13 @@ import os
 from datetime import datetime
 
 import matplotlib.pyplot as plt
-import mne
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 
-from decoding import BandpassFilter, Decoder, extract_events, load_recording, signal
-from session_manager import (
-    CMD_MAP,
-    FILTER_ORDER,
-    FMAX,
-    FMIN,
-    FS,
-    HARMONICS,
-    SAMPLE_T_MS,
-    WINDOW_S,
-)
+from decoding import extract_events, load_recording
+from session_manager import CMD_MAP, FS, OBJ_COORDS
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -48,7 +38,7 @@ SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 
 # %% Extract online results
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Pilot\P98_S02"
+folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P1"
 
 block_i = 0
 online_results = []
@@ -56,21 +46,28 @@ for file in os.listdir(folder):
     if file.endswith(".xdf"):
         raw, events = load_recording(CH_NAMES, folder, file)
         session_events = extract_events(
-            events, ["freqs", "start run", "end run", "go", "pred", "reach"]
+            events, ["freqs", "start run", "end run", "go", "pred", "reach", "rest"]
         )
 
         p_id, freq_str = session_events[0][-1].split(" ")
         freqs = [int(_f) for _f in freq_str.strip("freqs:").split(",")]
         for ts, _, label in session_events:
             if "start run" in label:
+                # new block
                 block = label.strip("start run: ")
                 block_i += 1
                 trial_i = 0
             elif "go:" in label:
+                # new trial
                 goal = label[-1]
+                reached = None
                 trial_i += 1
                 trial_start_row = len(online_results)
-            elif "pred" in label:
+                active = True
+            elif "rest" in label:
+                active = False
+            elif ("pred" in label) and active:
+                # grab outputs for each time
                 pred = label[-1]
                 tokens = label.split(" ")
                 coords = [float(_c) for _c in tokens[0][2:].split(",")]
@@ -83,7 +80,7 @@ for file in os.listdir(folder):
                     alpha = float(tokens[4][6:])
                     u_robot = [float(_c) for _c in tokens[5][8:].split(",")]
                     u_cmb = [float(_c) for _c in tokens[6][6:].split(",")]
-                    success = 0  # assume fail unless reached flag found
+                    success = 0  # assume fail
                 else:
                     pred_obj = np.nan
                     confidence = np.nan
@@ -100,6 +97,7 @@ for file in os.listdir(folder):
                         trial_i,
                         ts,
                         goal,
+                        reached,
                         success,
                         coords[0],
                         coords[1],
@@ -116,11 +114,14 @@ for file in os.listdir(folder):
                         u_cmb[2],
                     ]
                 )
+            # reaching results
             elif "reach" in label:
-                if label.split(" ")[1][-1] == goal:
-                    for row in online_results[trial_start_row : len(online_results)]:
-                        row[5] = 1
+                reached_obj = label.split(" ")[1][-1]
+                for row in online_results[trial_start_row:]:
+                    row[6] = reached_obj
+                    row[7] = int(reached_obj == goal)
 
+# store data
 online_df = pd.DataFrame(
     online_results,
     columns=[
@@ -130,6 +131,7 @@ online_df = pd.DataFrame(
         "trial",
         "ts",
         "goal",
+        "reached",
         "success",
         "x",
         "y",
@@ -148,11 +150,13 @@ online_df = pd.DataFrame(
 )
 online_df.head()
 online_df.to_csv(
-    folder + "//P%d_results_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
+    folder
+    + "//%s_results_tstep_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
 )
 
 # %% Load data
-results = "results_20240228_161226.csv"
+results = "P1_results_tstep.csv"
+
 online_df = pd.read_csv(folder + "//" + results, index_col=0)
 online_df["label"] = (
     online_df.block
@@ -163,6 +167,7 @@ online_df["label"] = (
     + " G"
     + online_df.goal
 )
+print(online_df.groupby("block_i").trial.max())
 online_df.head()
 
 # %% Extract step time and length across all blocks
@@ -194,56 +199,15 @@ axs[0].set_ylabel("Step length (mm)")
 # step time
 sns.boxplot(data=online_df, x="block", y="dt", ax=axs[1])
 axs[1].set_ylabel("Time step (s)")
-axs[1].set_ylim([0, 0.5])
+axs[1].set_ylim([0, 1])
+axs[1].set_xlabel("Block")
 
 fig.tight_layout()
 sns.despine()
+plt.savefig(folder + "//step_time_length.svg", format="svg")
 
 # %% Online decoding performance
-fig, axs = plt.subplots(2, 3, figsize=(6, 3), sharex=True, sharey=True)
 obs_df = online_df[online_df.block == "OBS"].copy()
-
-# summed
-correct_preds = np.array(obs_df.groupby(["label"])["success"].sum())
-total_preds = np.array(obs_df.groupby(["label"])["success"].count())
-ax = sns.histplot(
-    correct_preds / total_preds * 100, stat="count", ax=axs[0, 0], binwidth=10
-)
-ax.legend(["all"])
-ax.set_ylabel("")
-ax.set_xlim([0, 100])
-
-# split by direction
-for letter, ax in zip(CMDS, axs.flatten()[1:]):
-    letter_df = obs_df[obs_df.goal == letter]
-    correct_preds = np.array(letter_df.groupby(["label"])["success"].sum())
-    total_preds = np.array(letter_df.groupby(["label"])["success"].count())
-    sns.histplot(
-        correct_preds / total_preds * 100,
-        stat="count",
-        ax=ax,
-        binwidth=10,
-    )
-    ax.set_ylabel("Trials")
-    ax.legend(letter)
-
-axs[1, 0].set_xlabel("Time steps with correct \npredictions (%)")
-sns.despine()
-fig.tight_layout()
-
-# overall accuracy
-fig, axs = plt.subplots(1, 1, figsize=(2, 2))
-acc_rate = (
-    obs_df.groupby(["goal"])["success"].sum()
-    / obs_df.groupby(["goal"])["success"].count()
-)
-acc_rate_df = pd.DataFrame(acc_rate).reset_index()
-sns.barplot(data=acc_rate_df, x="goal", y="success", ax=axs, order=CMDS)
-axs.set_ylabel("Correct time steps (%)")
-axs.set_xlabel("Direction")
-axs.set_ylim([0, 1])
-sns.despine()
-fig.tight_layout()
 
 # confusion matrix
 fig, axs = plt.subplots(1, 1, figsize=(3, 3))
@@ -264,51 +228,100 @@ axs.set_title("%.3f" % balanced_accuracy_score(obs_df["goal"], obs_df["pred"]))
 axs.set_xlabel("Predicted")
 axs.set_ylabel("True")
 
+fig.tight_layout()
+plt.savefig(folder + "//decoding_acc.svg", format="svg")
+
 # %% Reaching performance
-fig, axs = plt.subplots(1, 2, figsize=(8, 3), sharex=True, sharey=False)
-test_df = online_df[online_df.block.isin(["DC", "SC"])].copy()
+test_blocks = [3, 5, 6, 7]
+
+# DC and SC trials
+test_df = online_df[online_df.block_i.isin(test_blocks)].copy()
+trial_df = test_df.groupby(by=["label", "block", "goal"])["success"].max().reset_index()
+trial_df["len_cm"] = list(test_df.groupby(["label"])["dL"].sum() / 10)
 
 # failure rate
-successes = pd.DataFrame(test_df.groupby(["label"])["success"].max()).reset_index()
-successes["block"] = successes.label.str[0:5]
-block_order = list(set(successes["block"]))
-failure_rate = pd.DataFrame(
+session_df = (
     100
-    - successes.groupby(["block"])["success"].sum()
-    / successes.groupby(["block"])["success"].count()
-    * 100,
+    - trial_df.groupby(["block"])["success"].sum()
+    / trial_df.groupby(["block"])["success"].count()
+    * 100
 ).reset_index()
-failure_rate = failure_rate.rename(columns={"success": "rate"})
-sns.pointplot(data=failure_rate, x="block", y="rate", order=block_order, ax=axs[0])
-axs[0].set_ylim([0, 100])
+session_df.rename(columns={"success": "fail_rate"}, inplace=True)
+
+# trajectory length (only include objects with >1 successful reach)
+len_df = (
+    trial_df[trial_df.success == 1].groupby(["block", "goal"])["len_cm"].mean()
+).reset_index()
+len_valid = len_df[len_df.block == "DC"].merge(len_df[len_df.block == "SC"], on="goal")
+session_df["len_cm"] = [len_valid.len_cm_x.mean(), len_valid.len_cm_y.mean()]
+
+# store data
+session_df.head()
+session_df.to_csv(
+    folder
+    + "//%s_results_session_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
+)
+
+# %% Plot reaching results
+fig, axs = plt.subplots(1, 4, figsize=(5, 2), width_ratios=[2, 1, 2, 1])
+
+# failure rate
+sns.barplot(data=session_df, x="block", y="fail_rate", ax=axs[0])
 axs[0].set_ylabel("Failure rate (%)")
-axs[0].set_xlabel("Block")
+axs[0].set_ylim([0, 100])
 
-# trajectory length (successful only)
-lengths = pd.DataFrame(
-    test_df[test_df.success == 1].groupby(["label"])["dL"].sum() / 1000
-).reset_index()
-lengths["block"] = lengths.label.str[0:5]
-lengths["goal"] = lengths.label.str[-1]
-goal_lengths = pd.DataFrame(
-    lengths.groupby(["block", "goal"])["dL"].mean()
-).reset_index()
-sns.pointplot(data=goal_lengths, x="block", y="dL", order=block_order, ax=axs[1])
-axs[1].set_ylabel("Trajectory length (m)")
-axs[1].set_ylim([0, 1])
-axs[1].set_xlabel("Block")
+# change in failure rate
+sns.barplot(
+    y=session_df[session_df.block == "SC"].fail_rate.values
+    - session_df[session_df.block == "DC"].fail_rate.values,
+    ax=axs[1],
+)
+axs[1].set_ylabel("$\Delta$ Failure rate (%)")
+axs[1].set_ylim([-100, 100])
 
+# trajectory length
+sns.barplot(data=session_df, x="block", y="len_cm", ax=axs[2])
+axs[2].set_ylabel("Trajectory length (cm)")
+axs[2].set_ylim([0, 60])
+
+# change in trajectory length
+sns.barplot(
+    y=session_df[session_df.block == "SC"].len_cm.values
+    - session_df[session_df.block == "DC"].len_cm.values,
+    ax=axs[3],
+)
+axs[3].set_ylabel("$\Delta$ Trajectory length (cm)")
+axs[3].set_ylim([-20, 20])
+
+for ax, xlabel in zip(axs, ["", "SC-DC", "", "SC-DC"]):
+    ax.set_xlabel(xlabel)
 sns.despine()
 fig.tight_layout()
+plt.savefig(folder + "//reaching_results.svg", format="svg")
 
-# %% Successful reaching trajectories
-start_pos_df = test_df[test_df.dL == 0]
-
+# %% 3D reaching trajectories
 fig = plt.figure(figsize=(10, 7))
 ax = plt.axes(projection="3d")
 
+# plot object locations
+radius_m = 0.0225
+height_m = 0.06
+n_pts = 10
+
+for test_obj in test_df.goal.unique():
+    xc, yc, zc = OBJ_COORDS[int(test_obj)]
+    z = np.linspace(0, height_m, n_pts) + zc
+    theta = np.linspace(0, 2 * np.pi, n_pts)
+    theta_grid, z_grid = np.meshgrid(theta, z)
+    x_grid = radius_m * np.cos(theta_grid) + xc
+    y_grid = radius_m * np.sin(theta_grid) + yc
+    ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color="g")
+
+# plot trajectories
 for label in test_df.label.unique():
     col = "r" if "DC" in label else "b"
+
+    # successful only
     if sum(test_df[test_df.label == label].success) > 0:
         traj = np.array(test_df[test_df.label == label][["x", "y", "z"]])
         ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col)
@@ -322,254 +335,3 @@ ax.set_ylabel("y (m)")
 ax.set_zlim([-0.5, 0])
 ax.set_zlabel("z (m)")
 plt.show()
-
-# %% DC - SC
-fig, axs = plt.subplots(1, 2, figsize=(2.5, 2), sharex=True, sharey=False)
-dc_block = ["DC B3", "DC B8"]
-sc_block = ["SC B5", "SC B6", "SC B7"]
-
-# failure rate
-sns.barplot(
-    y=[
-        failure_rate[failure_rate.block.isin(sc_block)].rate.values.mean()
-        - failure_rate[failure_rate.block.isin(dc_block)].rate.values.mean()
-    ],
-    ax=axs[0],
-)
-axs[0].set_ylim([-100, 100])
-axs[0].set_ylabel("$\Delta$ Failure rate (%)")
-axs[0].set_xlabel("SC-DC")
-
-# trajectory length
-sns.barplot(
-    y=[
-        goal_lengths[goal_lengths.block.isin(sc_block)]["dL"].mean()
-        - goal_lengths[goal_lengths.block.isin(dc_block)]["dL"].mean()
-    ],
-    ax=axs[1],
-)
-axs[1].set_ylim([-0.4, 0.4])
-axs[1].set_ylabel("$\Delta$ Trajectory length  (m)")
-axs[1].set_xlabel("SC-DC")
-
-sns.despine()
-fig.tight_layout()
-
-# %% Extract observation run data
-files = ["P98_S2_R1.xdf"]
-plot_signals = False
-fmin, fmax = FMIN, FMAX
-ep_tmin, ep_tmax = 0, 3.6
-
-X, y = [], []
-for file in files:
-    # load labrecorder file
-    raw, events = load_recording(CH_NAMES, folder, file)
-    raw = raw.filter(l_freq=fmin, h_freq=fmax)
-
-    if plot_signals:
-        raw.plot()
-        raw.compute_psd(fmin=1, fmax=40).plot()
-
-    # epoch go trials
-    go_events = extract_events(events, ["go"])
-    epochs = mne.Epochs(
-        raw,
-        [[_e[0], 0, ord(_e[2][-1])] for _e in go_events],
-        baseline=None,
-        tmin=ep_tmin,
-        tmax=ep_tmax,
-        picks="eeg",
-        event_id={_d: ord(_d) for _d in CMDS},
-    )
-    X.append(epochs.get_data(SSVEP_CHS))
-    y.append([chr(_e) for _e in epochs.events[:, -1]])
-
-X, y = np.concatenate(X), np.concatenate(y)
-
-# %% Offline decoding predictions
-fig, axs = plt.subplots(2, 5, figsize=(10, 4))
-
-decoder = Decoder(WINDOW_S, FS, HARMONICS, freqs)
-n_window = int(WINDOW_S * FS)
-n_chunk = int(SAMPLE_T_MS / 1000 * FS)
-
-scores = []
-preds = []
-for X_i, y_i in zip(X, y):
-    y_pred_i = []
-    score_i = []
-    for ti_min in range(n_window, X_i.shape[1] - n_chunk, n_chunk):
-        X_slice = X_i[:, ti_min - n_window : ti_min]
-        score_i.append(decoder.score(X_slice))
-        y_pred_i.append(CMDS[np.argmax(score_i[-1])])
-
-    preds.append(y_pred_i)
-    scores.append(score_i)
-
-# predictions
-correct_preds = np.sum([np.array(_p) == _l for _l, _p in zip(y, preds)], axis=1)
-n_slices = len(preds[0])
-
-# scores
-score_df = pd.DataFrame(np.array(scores).reshape((-1, len(CMDS))))
-score_df["label"] = np.repeat(y, n_slices)
-score_df = pd.melt(score_df, id_vars="label")
-score_df["direction"] = [CMDS[_i] for _i in score_df["variable"]]
-
-for l_i, letter in enumerate(CMDS):
-
-    # predictions
-    sns.histplot(
-        (correct_preds / n_slices * 100)[y == letter],
-        stat="count",
-        ax=axs[0, l_i],
-        binwidth=10,
-    )
-    axs[0, l_i].set_title(letter)
-    axs[0, l_i].set_xlim([0, 100])
-    axs[0, l_i].set_ylim([0, 20])
-
-    # correlations
-    sns.ecdfplot(
-        data=score_df[score_df.label == letter],
-        x="value",
-        hue="direction",
-        hue_order=CMDS,
-        stat="proportion",
-        palette={
-            _l: sns.color_palette("colorblind", len(CMDS))[l_i]
-            for l_i, _l in enumerate(CMDS)
-        },
-        ax=axs[1, l_i],
-    )
-    axs[1, l_i].set_xlim([0, 1])
-    axs[1, l_i].set_ylim([0, 1])
-    axs[1, l_i].set_xlabel("Correlation")
-    if l_i != 4:
-        axs[1, l_i].get_legend().remove()
-
-axs[0, 0].set_xlabel("Time steps with correct\npredictions (%)")
-
-sns.despine()
-fig.tight_layout()
-
-# confusion matrix
-fig, axs = plt.subplots(1, 1, figsize=(3, 3))
-conf_mat = confusion_matrix(
-    np.repeat(y, n_slices), np.concatenate(preds), normalize="true", labels=CMDS
-)
-sns.heatmap(
-    conf_mat,
-    annot=True,
-    fmt=".2f",
-    cmap="Blues",
-    cbar=False,
-    xticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
-    yticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
-    ax=axs,
-)
-axs.set_xlabel("Predicted")
-axs.set_ylabel("True")
-
-# %% Compare online and offline results
-files = ["P98_S2_R1.xdf"]
-plot_signals = False
-fmin, fmax = FMIN, FMAX
-ep_tmin, ep_tmax = -1, 0
-
-X, y = [], []
-raw, events = load_recording(CH_NAMES, folder, file)
-decoder = Decoder(WINDOW_S, FS, HARMONICS, freqs)
-bandpass = BandpassFilter(FILTER_ORDER, FS, FMIN, FMAX, len(SSVEP_CHS))
-
-# get pred events from observation run
-events = extract_events(events, ["go", "pred", "OBS"])
-for ts, _, label in events:
-    if label == "start run: OBS":
-        pred_events = []
-        go_labels = []
-        t_start = ts
-    if "go" in label:
-        go_target = label[-1]
-    elif "pred" in label:
-        pred_events.append([ts, 0, label[-1]])
-        go_labels.append(go_target)
-    elif label == "end run: OBS":
-        t_fin = ts
-        break
-
-# filter and epoch
-eeg_filtered = bandpass.filter(raw.get_data(SSVEP_CHS))
-raw_filt = mne.io.RawArray(
-    np.concatenate([eeg_filtered, raw.get_data()[len(SSVEP_CHS) :]], axis=0), raw.info
-)
-epochs_filt = mne.Epochs(
-    raw_filt,
-    [[_e[0], 0, ord(_e[2][-1])] for _e in pred_events],
-    baseline=None,
-    tmin=ep_tmin,
-    tmax=ep_tmax,
-    picks="eeg",
-    event_id={_d: ord(_d) for _d in CMDS},
-    preload=True,
-)
-
-# get predictions
-X_filt = epochs_filt.get_data(SSVEP_CHS)[:, :, -FS:]
-y_online = [chr(_e) for _e in epochs_filt.events[:, -1]]
-y_offline = [CMDS[decoder.predict(_x)] for _x in X_filt]
-
-# plot confusion matrix
-fig, axs = plt.subplots(1, 2, figsize=(6, 3))
-for ax, y, title in zip(axs, [go_labels, y_online], ["True", "Online"]):
-    sns.heatmap(
-        confusion_matrix(y, y_offline, normalize="true", labels=CMDS),
-        annot=True,
-        fmt=".2f",
-        cmap="Blues",
-        cbar=False,
-        xticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
-        yticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
-        ax=ax,
-    )
-    ax.set_title("%.3f" % balanced_accuracy_score(y, y_offline))
-    ax.set_xlabel("Offline")
-    ax.set_ylabel(title)
-
-# %% Filtering comparison
-recording_len = 30 * FS
-filter_order = 4
-file = r"P98_S2_R1.xdf"
-
-raw, events = load_recording(CH_NAMES, folder, file)
-recording = raw.get_data(SSVEP_CHS)
-
-# online filter
-bandpass = BandpassFilter(filter_order, FS, fmin, fmax, len(SSVEP_CHS))
-X_filt = []
-for ti_min in range(n_chunk, recording_len, n_chunk):
-    X_slice = recording[:, ti_min - n_chunk : ti_min]
-    X_filt.append(bandpass.filter(X_slice))
-X_filt_online = np.concatenate(X_filt, axis=1)
-
-# offline filter
-offline_filter = signal.butter(
-    N=filter_order, Wn=[fmin, fmax], fs=FS, btype="bandpass", output="sos"
-)
-X_filt_offline = signal.sosfilt(
-    offline_filter, recording[:, : X_filt_online.shape[1]], axis=1
-)
-
-fig, axs = plt.subplots(1, 3, figsize=(10, 3), sharex=True, sharey=True)
-axs[0].plot(X_filt_offline.T * 1e6)
-axs[1].plot(X_filt_online.T * 1e6)
-axs[2].plot((X_filt_offline - X_filt_online).T * 1e6)
-[axs[_i].set_title(_t) for _i, _t in enumerate(["Offline", "Online", "Difference"])]
-axs[0].set_ylim([100, -100])
-axs[0].set_xlim([0, 10 * FS])
-axs[0].axvline(768, color="k", linestyle="--")
-axs[0].set_ylabel("Amplitude (uV)")
-axs[0].set_xlabel("Time (samples)")
-sns.despine()
-fig.tight_layout()
