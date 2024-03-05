@@ -15,7 +15,7 @@ from robot_control import ReachyRobot, SharedController
 from stimulus import StimController
 
 # session
-P_ID = 98  # participant ID
+P_ID = 99  # participant ID
 FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
 INIT_MS = 5000  # time to settle at the start of each block/trial
 
@@ -458,6 +458,7 @@ class ExperimentGuiApp:
         self.decoder.filter_chunk()
 
         for t_i, trial in enumerate(self.obs_block["trials"]):
+            trial_preds = []
             logger.warning(
                 "Trial (%s) %d/%d" % (trial, t_i + 1, len(self.obs_block["trials"]))
             )
@@ -505,6 +506,7 @@ class ExperimentGuiApp:
                     if pred_i is not None:
                         pred = list(self.cmd_map.keys())[pred_i]
                         data_msg += "pred:%s" % (pred)
+                        trial_preds.append(pred)
 
                         # control the robot
                         if self.observation_fb:
@@ -519,6 +521,10 @@ class ExperimentGuiApp:
                 last_move_ms = pygame.time.get_ticks()
 
             # rest while resetting the arm/stim
+            self.logger.critical(
+                "Direction: %s, Accuracy: %.3f"
+                % (trial, sum([_p for _p in trial_preds] / len(trial_preds)))
+            )
             self.unity_game.turn_off_stim()
             self.marker_stream.push_sample(["rest:%s" % trial])
             reachy_robot.turn_off(safely=True)
