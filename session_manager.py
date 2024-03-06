@@ -521,10 +521,8 @@ class ExperimentGuiApp:
                 last_move_ms = pygame.time.get_ticks()
 
             # rest while resetting the arm/stim
-            self.logger.critical(
-                "Direction: %s, Accuracy: %.3f"
-                % (trial, sum([_p for _p in trial_preds] / len(trial_preds)))
-            )
+            trial_acc = sum([_p == trial for _p in trial_preds]) / len(trial_preds)
+            self.logger.critical("Direction: %s, Accuracy: %.3f" % (trial, trial_acc))
             self.unity_game.turn_off_stim()
             self.marker_stream.push_sample(["rest:%s" % trial])
             reachy_robot.turn_off(safely=True)
@@ -545,6 +543,8 @@ class ExperimentGuiApp:
         experiment_running = False
         self.start_button.configure(state="disabled", background=self.light_grey)
         self.obs_button.configure(state="disabled", background=self.light_grey)
+        self.success_button.configure(state="disabled", background=self.light_grey)
+        self.toplevel.update()
 
         goal_obj = self.reach_block["trials"][self.last_trial]
         self.marker_stream.push_sample(["fail:obj%d" % goal_obj])
@@ -557,6 +557,8 @@ class ExperimentGuiApp:
         experiment_running = False
         self.start_button.configure(state="disabled", background=self.light_grey)
         self.obs_button.configure(state="disabled", background=self.light_grey)
+        self.fail_button.configure(state="disabled", background=self.light_grey)
+        self.toplevel.update()
 
         goal_obj = self.reach_block["trials"][self.last_trial]
         self.marker_stream.push_sample(["success:obj%d" % goal_obj])
@@ -640,6 +642,7 @@ if __name__ == "__main__":
     logger.critical("Connected to marker stream and set-up lab recorder (y/n)?")
     if input() != "y":
         logger.critical("Streams not set up, exiting")
+        exit()
     marker_stream.push_sample(["start session"])
     marker_stream.push_sample(
         ["P%d freqs:%s" % (P_ID, ",".join(str(_f) for _f in p_freqs))]
