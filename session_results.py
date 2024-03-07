@@ -2,6 +2,7 @@
 import os
 from datetime import datetime
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -9,7 +10,7 @@ import seaborn as sns
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 
 from decoding import extract_events, load_recording
-from session_manager import CMD_MAP, FS, OBJ_COORDS
+from session_manager import CMD_MAP, FS, OBJ_COORDS, OBJ_H, OBJ_R
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -38,7 +39,7 @@ SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 
 # %% Extract online results
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P1"
+folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P2"
 
 block_i = 0
 online_results = []
@@ -46,7 +47,18 @@ for file in os.listdir(folder):
     if file.endswith(".xdf"):
         raw, events = load_recording(CH_NAMES, folder, file)
         session_events = extract_events(
-            events, ["freqs", "start run", "end run", "go", "pred", "reach", "rest"]
+            events,
+            [
+                "freqs",
+                "start run",
+                "end run",
+                "go",
+                "pred",
+                "reach",
+                "success",
+                "fail",
+                "rest",
+            ],
         )
 
         p_id, freq_str = session_events[0][-1].split(" ")
@@ -73,8 +85,8 @@ for file in os.listdir(folder):
                 coords = [float(_c) for _c in tokens[0][2:].split(",")]
                 pred = tokens[1][-1]
 
-                # test run only
                 if block in ["DC", "SC"]:
+                    # reaching trials
                     pred_obj = int(tokens[2][-1])
                     confidence = float(tokens[3][5:])
                     alpha = float(tokens[4][6:])
@@ -82,6 +94,7 @@ for file in os.listdir(folder):
                     u_cmb = [float(_c) for _c in tokens[6][6:].split(",")]
                     success = 0  # assume fail
                 else:
+                    # observation trials
                     pred_obj = np.nan
                     confidence = np.nan
                     alpha = np.nan
@@ -114,12 +127,18 @@ for file in os.listdir(folder):
                         u_cmb[2],
                     ]
                 )
-            # reaching results
+            # automatic block collision detected
             elif "reach" in label:
-                reached_obj = label.split(" ")[1][-1]
+                reached_obj = label.split(" ")[0][-1]
                 for row in online_results[trial_start_row:]:
                     row[6] = reached_obj
                     row[7] = int(reached_obj == goal)
+
+            # manual button press reach flag
+            elif "success" in label:
+                for row in online_results[trial_start_row:]:
+                    row[6] = goal
+                    row[7] = 1
 
 # store data
 online_df = pd.DataFrame(
@@ -148,7 +167,7 @@ online_df = pd.DataFrame(
         "u_cmb_z",
     ],
 )
-online_df.head()
+print(online_df.groupby("block_i")["trial"].max())  # trials/block
 online_df.to_csv(
     folder
     + "//%s_results_tstep_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
@@ -167,7 +186,6 @@ online_df["label"] = (
     + " G"
     + online_df.goal
 )
-print(online_df.groupby("block_i").trial.max())
 online_df.head()
 
 # %% Extract step time and length across all blocks
@@ -255,13 +273,6 @@ len_df = (
 len_valid = len_df[len_df.block == "DC"].merge(len_df[len_df.block == "SC"], on="goal")
 session_df["len_cm"] = [len_valid.len_cm_x.mean(), len_valid.len_cm_y.mean()]
 
-# store data
-session_df.head()
-session_df.to_csv(
-    folder
-    + "//%s_results_session_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
-)
-
 # %% Plot reaching results
 fig, axs = plt.subplots(1, 4, figsize=(5, 2), width_ratios=[2, 1, 2, 1])
 
@@ -271,11 +282,11 @@ axs[0].set_ylabel("Failure rate (%)")
 axs[0].set_ylim([0, 100])
 
 # change in failure rate
-sns.barplot(
-    y=session_df[session_df.block == "SC"].fail_rate.values
-    - session_df[session_df.block == "DC"].fail_rate.values,
-    ax=axs[1],
+dF = (
+    session_df[session_df.block == "SC"].fail_rate.values
+    - session_df[session_df.block == "DC"].fail_rate.values
 )
+sns.barplot(y=dF, ax=axs[1])
 axs[1].set_ylabel("$\Delta$ Failure rate (%)")
 axs[1].set_ylim([-100, 100])
 
@@ -285,11 +296,11 @@ axs[2].set_ylabel("Trajectory length (cm)")
 axs[2].set_ylim([0, 60])
 
 # change in trajectory length
-sns.barplot(
-    y=session_df[session_df.block == "SC"].len_cm.values
-    - session_df[session_df.block == "DC"].len_cm.values,
-    ax=axs[3],
+dL = (
+    session_df[session_df.block == "SC"].len_cm.values
+    - session_df[session_df.block == "DC"].len_cm.values
 )
+sns.barplot(y=dL, ax=axs[3])
 axs[3].set_ylabel("$\Delta$ Trajectory length (cm)")
 axs[3].set_ylim([-20, 20])
 
@@ -299,39 +310,55 @@ sns.despine()
 fig.tight_layout()
 plt.savefig(folder + "//reaching_results.svg", format="svg")
 
+# store data
+session_df = pd.concat(
+    [session_df, pd.DataFrame({"block": "SC-DC", "fail_rate": dF, "len_cm": dL})]
+)
+session_df.to_csv(
+    folder
+    + "//%s_results_session_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
+)
+session_df.head()
+
 # %% 3D reaching trajectories
-fig = plt.figure(figsize=(10, 7))
-ax = plt.axes(projection="3d")
-
-# plot object locations
-radius_m = 0.0225
-height_m = 0.06
+# %matplotlib qt
 n_pts = 10
+fig = plt.figure(figsize=(10, 7))
 
+mpl.rcParams.update(mpl.rcParamsDefault)
+ax = plt.axes(projection="3d")
+origin = OBJ_COORDS[4]
+
+# cylinder objects
 for test_obj in test_df.goal.unique():
-    xc, yc, zc = OBJ_COORDS[int(test_obj)]
-    z = np.linspace(0, height_m, n_pts) + zc
+    xc, yc, zc = OBJ_COORDS[int(test_obj)] - origin
+    z = np.linspace(0, OBJ_H, n_pts) + zc / 2
     theta = np.linspace(0, 2 * np.pi, n_pts)
     theta_grid, z_grid = np.meshgrid(theta, z)
-    x_grid = radius_m * np.cos(theta_grid) + xc
-    y_grid = radius_m * np.sin(theta_grid) + yc
-    ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color="g")
+    x_grid = OBJ_R * np.cos(theta_grid) + xc
+    y_grid = OBJ_R * np.sin(theta_grid) + yc
+    ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color="grey")
 
 # plot trajectories
+start_poss = []
 for label in test_df.label.unique():
     col = "r" if "DC" in label else "b"
 
     # successful only
-    if sum(test_df[test_df.label == label].success) > 0:
-        traj = np.array(test_df[test_df.label == label][["x", "y", "z"]])
-        ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col)
+    if max(test_df[test_df.label == label].success):
+        traj = np.array(test_df[test_df.label == label][["x", "y", "z"]]) - origin
+        ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col, alpha=0.7)
         ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], "kx")
+        start_poss.append(traj[0, :])
 
-# ax.view_init(elev=0, azim=0)
-ax.set_xlim([0, 0.5])
+print("T0 mean: %s " % ["%.3f" % _x for _x in np.mean(start_poss, axis=0)])
+print("T0 std: %s" % ["%.3f" % _x for _x in np.std(start_poss, axis=0)])
+
+ax.set_box_aspect([1, 1, 1])
+ax.set_xticks(np.arange(-3, 2) / 10)
 ax.set_xlabel("x (m)")
-ax.set_ylim([-0.5, 0])
+ax.set_yticks(np.arange(-2, 3) / 10)
 ax.set_ylabel("y (m)")
-ax.set_zlim([-0.5, 0])
+ax.set_zticks(np.arange(-2, 3) / 10)
 ax.set_zlabel("z (m)")
 plt.show()
