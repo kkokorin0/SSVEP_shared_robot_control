@@ -597,6 +597,7 @@ class ExperimentGuiApp:
 
         self.reachy_robot.turn_off(safely=True)
         self.logger.warning("Arm reset and turned off")
+        self.reachy_robot.get_motor_temp()
 
         self.start_button.configure(state="normal", background=self.orange)
         self.obs_button.configure(state="normal", background=self.yellow)
