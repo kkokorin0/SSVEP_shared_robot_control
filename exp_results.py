@@ -15,10 +15,10 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2"]
-F_LAYOUTS = [[8, 7, 13, 11, 9], [7, 13, 11, 8, 9]]
-T_NOM = [0.250, -0.203, -0.278]
-T0S = [[-0.147, 0.018, -0.048], [-0.187, 0.023, -0.074]]
+P_IDS = ["P1", "P2", "P3"]
+F_LAYOUTS = [[8, 7, 13, 11, 9], [7, 13, 11, 8, 9], [8, 13, 11, 9, 7]]
+T_NOM = [0.250, 0.203, -0.278]
+T0S = [[-0.147, 0.018, -0.049], [-0.187, 0.023, -0.074], [-0.144, 0.036, -0.036]]
 
 # %% Starting positions
 n_pts = 10
@@ -27,7 +27,8 @@ ax = plt.axes(projection="3d")
 
 # mean start positions
 for t0 in T0S:
-    ax.plot(t0[0] - T_NOM[0], t0[1] - T_NOM[1], t0[2] - T_NOM[2], "kx")
+    ax.plot(t0[0], t0[1], t0[2], "kx")
+ax.plot(T_NOM[0], T_NOM[1], T_NOM[2], "ko")
 
 ax.set_box_aspect([1, 1, 1])
 ax.set_xticks(np.arange(-3, 2) / 10)

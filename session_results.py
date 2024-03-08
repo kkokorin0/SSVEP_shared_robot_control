@@ -39,7 +39,7 @@ SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 
 # %% Extract online results
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P2"
+folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P3"
 
 block_i = 0
 online_results = []
@@ -321,7 +321,7 @@ session_df.to_csv(
 session_df.head()
 
 # %% 3D reaching trajectories
-# %matplotlib qt
+%matplotlib qt
 n_pts = 10
 fig = plt.figure(figsize=(10, 7))
 
@@ -332,7 +332,7 @@ origin = OBJ_COORDS[4]
 # cylinder objects
 for test_obj in test_df.goal.unique():
     xc, yc, zc = OBJ_COORDS[int(test_obj)] - origin
-    z = np.linspace(0, OBJ_H, n_pts) + zc / 2
+    z = np.linspace(0, OBJ_H, n_pts) - OBJ_H/2 + zc
     theta = np.linspace(0, 2 * np.pi, n_pts)
     theta_grid, z_grid = np.meshgrid(theta, z)
     x_grid = OBJ_R * np.cos(theta_grid) + xc
@@ -342,14 +342,19 @@ for test_obj in test_df.goal.unique():
 # plot trajectories
 start_poss = []
 for label in test_df.label.unique():
-    col = "r" if "DC" in label else "b"
+    if "DC" in label:
+        col = 'r'
+        shape = 'x'
+    else:
+        col = 'b'
+        shape = 'o'    
 
     # successful only
-    if max(test_df[test_df.label == label].success):
-        traj = np.array(test_df[test_df.label == label][["x", "y", "z"]]) - origin
-        ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col, alpha=0.7)
-        ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], "kx")
-        start_poss.append(traj[0, :])
+    # if max(test_df[test_df.label == label].success):
+    traj = np.array(test_df[test_df.label == label][["x", "y", "z"]]) - origin
+    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col, alpha=0.7)
+    ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], 'k' + shape)
+    start_poss.append(traj[0, :])
 
 print("T0 mean: %s " % ["%.3f" % _x for _x in np.mean(start_poss, axis=0)])
 print("T0 std: %s" % ["%.3f" % _x for _x in np.std(start_poss, axis=0)])
