@@ -17,7 +17,7 @@ CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
 P_IDS = ["P1", "P2"]
 F_LAYOUTS = [[8, 7, 13, 11, 9], [7, 13, 11, 8, 9]]
-T_NOM = [0, 0, 0]
+T_NOM = [0.250, -0.203, -0.278]
 T0S = [[-0.147, 0.018, -0.048], [-0.187, 0.023, -0.074]]
 
 # %% Starting positions
