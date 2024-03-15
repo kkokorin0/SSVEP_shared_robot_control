@@ -37,15 +37,19 @@ CH_NAMES = [
 ]
 SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
+T_NOM = np.array([0.250, -0.204, -0.276])
+P_ID = 1
+FOLDER = (
+    r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P"
+    + str(P_ID)
+)
 
 # %% Extract online results
-folder = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P3"
-
 block_i = 0
 online_results = []
-for file in os.listdir(folder):
+for file in os.listdir(FOLDER):
     if file.endswith(".xdf"):
-        raw, events = load_recording(CH_NAMES, folder, file)
+        raw, events = load_recording(CH_NAMES, FOLDER, file)
         session_events = extract_events(
             events,
             [
@@ -169,14 +173,14 @@ online_df = pd.DataFrame(
 )
 print(online_df.groupby("block_i")["trial"].max())  # trials/block
 online_df.to_csv(
-    folder
-    + "//%s_results_tstep_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
+    FOLDER
+    + "//P%s_results_tstep_%s.csv" % (P_ID, datetime.now().strftime("%Y%m%d_%H%M%S"))
 )
 
 # %% Load data
-results = "P1_results_tstep.csv"
+results = "P%d_results_tstep.csv" % P_ID
 
-online_df = pd.read_csv(folder + "//" + results, index_col=0)
+online_df = pd.read_csv(FOLDER + "//" + results, index_col=0)
 online_df["label"] = (
     online_df.block
     + " B"
@@ -222,7 +226,7 @@ axs[1].set_xlabel("Block")
 
 fig.tight_layout()
 sns.despine()
-plt.savefig(folder + "//step_time_length.svg", format="svg")
+plt.savefig(FOLDER + "//step_time_length.svg", format="svg")
 
 # %% Online decoding performance
 obs_df = online_df[online_df.block == "OBS"].copy()
@@ -247,7 +251,7 @@ axs.set_xlabel("Predicted")
 axs.set_ylabel("True")
 
 fig.tight_layout()
-plt.savefig(folder + "//decoding_acc.svg", format="svg")
+plt.savefig(FOLDER + "//decoding_acc.svg", format="svg")
 
 # %% Reaching performance
 test_blocks = [3, 5, 6, 7]
@@ -257,14 +261,13 @@ test_df = online_df[online_df.block_i.isin(test_blocks)].copy()
 trial_df = test_df.groupby(by=["label", "block", "goal"])["success"].max().reset_index()
 trial_df["len_cm"] = list(test_df.groupby(["label"])["dL"].sum() / 10)
 
-# failure rate
+# success rate
 session_df = (
-    100
-    - trial_df.groupby(["block"])["success"].sum()
+    trial_df.groupby(["block"])["success"].sum()
     / trial_df.groupby(["block"])["success"].count()
     * 100
 ).reset_index()
-session_df.rename(columns={"success": "fail_rate"}, inplace=True)
+session_df.rename(columns={"success": "success_rate"}, inplace=True)
 
 # trajectory length (only include objects with >1 successful reach)
 len_df = (
@@ -276,18 +279,18 @@ session_df["len_cm"] = [len_valid.len_cm_x.mean(), len_valid.len_cm_y.mean()]
 # %% Plot reaching results
 fig, axs = plt.subplots(1, 4, figsize=(5, 2), width_ratios=[2, 1, 2, 1])
 
-# failure rate
-sns.barplot(data=session_df, x="block", y="fail_rate", ax=axs[0])
-axs[0].set_ylabel("Failure rate (%)")
+# success rate
+sns.barplot(data=session_df, x="block", y="success_rate", ax=axs[0])
+axs[0].set_ylabel("Success rate (%)")
 axs[0].set_ylim([0, 100])
 
-# change in failure rate
+# change in success rate
 dF = (
-    session_df[session_df.block == "SC"].fail_rate.values
-    - session_df[session_df.block == "DC"].fail_rate.values
+    session_df[session_df.block == "SC"].success_rate.values
+    - session_df[session_df.block == "DC"].success_rate.values
 )
 sns.barplot(y=dF, ax=axs[1])
-axs[1].set_ylabel("$\Delta$ Failure rate (%)")
+axs[1].set_ylabel("$\Delta$ Success rate (%)")
 axs[1].set_ylim([-100, 100])
 
 # trajectory length
@@ -308,62 +311,54 @@ for ax, xlabel in zip(axs, ["", "SC-DC", "", "SC-DC"]):
     ax.set_xlabel(xlabel)
 sns.despine()
 fig.tight_layout()
-plt.savefig(folder + "//reaching_results.svg", format="svg")
+plt.savefig(FOLDER + "//reaching_results.svg", format="svg")
 
 # store data
 session_df = pd.concat(
-    [session_df, pd.DataFrame({"block": "SC-DC", "fail_rate": dF, "len_cm": dL})]
+    [session_df, pd.DataFrame({"block": "SC-DC", "success_rate": dF, "len_cm": dL})]
 )
 session_df.to_csv(
-    folder
-    + "//%s_results_session_%s.csv" % (p_id, datetime.now().strftime("%Y%m%d_%H%M%S"))
+    FOLDER
+    + "//P%s_results_session_%s.csv" % (P_ID, datetime.now().strftime("%Y%m%d_%H%M%S"))
 )
 session_df.head()
 
 # %% 3D reaching trajectories
 %matplotlib qt
 n_pts = 10
-fig = plt.figure(figsize=(10, 7))
-
 mpl.rcParams.update(mpl.rcParamsDefault)
-ax = plt.axes(projection="3d")
-origin = OBJ_COORDS[4]
-
-# cylinder objects
-for test_obj in test_df.goal.unique():
-    xc, yc, zc = OBJ_COORDS[int(test_obj)] - origin
-    z = np.linspace(0, OBJ_H, n_pts) - OBJ_H/2 + zc
-    theta = np.linspace(0, 2 * np.pi, n_pts)
-    theta_grid, z_grid = np.meshgrid(theta, z)
-    x_grid = OBJ_R * np.cos(theta_grid) + xc
-    y_grid = OBJ_R * np.sin(theta_grid) + yc
-    ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color="grey")
-
-# plot trajectories
 start_poss = []
 for label in test_df.label.unique():
-    if "DC" in label:
-        col = 'r'
-        shape = 'x'
-    else:
-        col = 'b'
-        shape = 'o'    
-
-    # successful only
-    # if max(test_df[test_df.label == label].success):
-    traj = np.array(test_df[test_df.label == label][["x", "y", "z"]]) - origin
+    fig = plt.figure(figsize=(10, 7))
+    ax = plt.axes(projection="3d")
+    ax.set_title(label)
+    
+    # trajectories
+    traj = np.array(test_df[test_df.label == label][["x", "y", "z"]]) - T_NOM
+    col = 'g' if test_df[test_df.label == label].success.max() else 'r'
     ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col, alpha=0.7)
-    ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], 'k' + shape)
+    ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], "kx" )
     start_poss.append(traj[0, :])
+    
+    # cylinder objects
+    for test_obj in test_df.goal.unique():
+        xc, yc, zc = OBJ_COORDS[int(test_obj)] - T_NOM
+        z = np.linspace(0, OBJ_H, n_pts) - OBJ_H / 2 + zc
+        theta = np.linspace(0, 2 * np.pi, n_pts)
+        theta_grid, z_grid = np.meshgrid(theta, z)
+        x_grid = OBJ_R * np.cos(theta_grid) + xc
+        y_grid = OBJ_R * np.sin(theta_grid) + yc
+        obj_col = 'g' if test_obj == test_df[test_df.label == label].goal.max() else 'r'
+        ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color=obj_col)
+    
+    ax.set_box_aspect([1, 1, 1])
+    ax.set_xlim([-0.3,0.3])
+    ax.set_xlabel("x (m)")
+    ax.set_ylim([-0.3,0.3])
+    ax.set_ylabel("y (m)")
+    ax.set_zlim([-0.3,0.3])
+    ax.set_zlabel("z (m)")
 
 print("T0 mean: %s " % ["%.3f" % _x for _x in np.mean(start_poss, axis=0)])
 print("T0 std: %s" % ["%.3f" % _x for _x in np.std(start_poss, axis=0)])
-
-ax.set_box_aspect([1, 1, 1])
-ax.set_xticks(np.arange(-3, 2) / 10)
-ax.set_xlabel("x (m)")
-ax.set_yticks(np.arange(-2, 3) / 10)
-ax.set_ylabel("y (m)")
-ax.set_zticks(np.arange(-2, 3) / 10)
-ax.set_zlabel("z (m)")
 plt.show()

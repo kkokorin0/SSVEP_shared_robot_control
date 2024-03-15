@@ -6,7 +6,7 @@ import seaborn as sns
 from scipy.stats import ttest_rel
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 
-from session_manager import CMD_MAP, FREQS
+from session_manager import CMD_MAP, FREQS, OBJ_COORDS, OBJ_H, OBJ_R
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -15,12 +15,17 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3"]
-F_LAYOUTS = [[8, 7, 13, 11, 9], [7, 13, 11, 8, 9], [8, 13, 11, 9, 7]]
-T_NOM = [0.250, 0.203, -0.278]
-T0S = [[-0.147, 0.018, -0.049], [-0.187, 0.023, -0.074], [-0.144, 0.036, -0.036]]
+P_IDS = ["P1", "P2", "P3", "P4"]
+F_LAYOUTS = [[8, 7, 13, 11, 9], [7, 13, 11, 8, 9], [8, 13, 11, 9, 7], [8, 9, 7, 13, 11]]
+T0S = [
+    [0.033, -0.008, -0.013],
+    [-0.007, -0.003, -0.038],
+    [0.036, 0.010, -0.003],
+    [0.002, 0.019, -0.035],
+]
 
 # %% Starting positions
+# %matplotlib qt
 n_pts = 10
 fig = plt.figure(figsize=(10, 7))
 ax = plt.axes(projection="3d")
@@ -28,16 +33,22 @@ ax = plt.axes(projection="3d")
 # mean start positions
 for t0 in T0S:
     ax.plot(t0[0], t0[1], t0[2], "kx")
-ax.plot(T_NOM[0], T_NOM[1], T_NOM[2], "ko")
+ax.plot(0, 0, 0, "ro")
 
 ax.set_box_aspect([1, 1, 1])
-ax.set_xticks(np.arange(-3, 2) / 10)
+ax.set_xlim([-0.5, 0.5])
 ax.set_xlabel("x (m)")
-ax.set_yticks(np.arange(-2, 3) / 10)
+ax.set_ylim([-0.5, 0.5])
 ax.set_ylabel("y (m)")
-ax.set_zticks(np.arange(-2, 3) / 10)
+ax.set_zlim([-0.5, 0.5])
 ax.set_zlabel("z (m)")
 plt.show()
+
+offset_distane_cm = [np.linalg.norm(_t) * 100 for _t in T0S]
+print(
+    "Offset distance (cm): %.3f+-%0.3f"
+    % (np.mean(offset_distane_cm), np.std(offset_distane_cm)),
+)
 
 # %% Frequency layouts
 fig, axs = plt.subplots(1, 1, figsize=(3, 3))
@@ -90,7 +101,7 @@ sns.heatmap(
 axs.set_xlabel("Predicted")
 axs.set_ylabel("True")
 
-# %% Failure rates
+# %% Success rates
 # load session data
 sessions = []
 for p_id in P_IDS:
@@ -101,13 +112,13 @@ for p_id in P_IDS:
 session_df = pd.concat(sessions).reset_index(drop=True)
 session_df["p_id"] = np.repeat(P_IDS, 3)
 
-# failure rates
+# success rates
 c = sns.color_palette()[0]
 fig, axs = plt.subplots(1, 2, figsize=(4, 3), width_ratios=[2, 1])
 sns.pointplot(
     data=session_df,
     x="block",
-    y="fail_rate",
+    y="success_rate",
     ax=axs[0],
     hue="p_id",
     order=["DC", "SC"],
@@ -115,15 +126,15 @@ sns.pointplot(
     dodge=True,
 )
 axs[0].set_ylim([0, 100])
-axs[0].set_ylabel("Failure rate (%)")
+axs[0].set_ylabel("Success rate (%)")
 axs[0].set_xlabel("")
 axs[0].legend().remove()
 
-# change in failure rates
+# change in success rates
 sns.swarmplot(
     data=session_df,
     x="block",
-    y="fail_rate",
+    y="success_rate",
     ax=axs[1],
     order=["SC-DC"],
     alpha=0.75,
@@ -132,23 +143,23 @@ sns.swarmplot(
 sns.pointplot(
     data=session_df,
     x="block",
-    y="fail_rate",
+    y="success_rate",
     ax=axs[1],
     order=["SC-DC"],
     errorbar=("ci", 95),
     markers="o",
     palette=[c],
 )
-axs[1].set_ylim([-100, 0])
-axs[1].set_ylabel("$\Delta$ Failure rate (%)")
+axs[1].set_ylim([0, 100])
+axs[1].set_ylabel("$\Delta$ Success rate (%)")
 axs[1].set_xlabel("")
 fig.tight_layout()
 sns.despine()
 
 # compute t-test results
 test_frate = ttest_rel(
-    session_df[session_df.block == "SC"]["fail_rate"],
-    session_df[session_df.block == "DC"]["fail_rate"],
+    session_df[session_df.block == "SC"]["success_rate"],
+    session_df[session_df.block == "DC"]["success_rate"],
     alternative="two-sided",
 )
 ci = test_frate.confidence_interval()
@@ -172,7 +183,7 @@ sns.pointplot(
     dodge=True,
 )
 axs[0].set_ylim([20, 70])
-axs[0].set_ylabel("Trajcetory length (cm)")
+axs[0].set_ylabel("Trajectory length (cm)")
 axs[0].set_xlabel("")
 axs[0].legend().remove()
 
@@ -220,20 +231,24 @@ acc_vs_sc_df = pd.merge(
     session_df[session_df.block == "SC-DC"], pd.DataFrame({"p_id": P_IDS, "acc": accs})
 )
 
-# acc vs delta failure rate
+# acc vs delta success rate
 sns.regplot(
-    data=acc_vs_sc_df, x="acc", y="fail_rate", ax=axs[0], color=sns.color_palette()[0]
+    data=acc_vs_sc_df,
+    x="acc",
+    y="success_rate",
+    ax=axs[0],
+    color=sns.color_palette()[0],
 )
-axs[0].set_ylim([-50, 0])
+axs[0].set_ylim([-100, 100])
 axs[0].set_xlim([0, 100])
 axs[0].set_xlabel("Accuracy (%)")
-axs[0].set_ylabel("$\Delta$ Failure rate (%)")
+axs[0].set_ylabel("$\Delta$ Success rate (%)")
 
 # acc vs delta trajectory length
 sns.regplot(
     data=acc_vs_sc_df, x="acc", y="len_cm", ax=axs[1], color=sns.color_palette()[1]
 )
-axs[1].set_ylim([-50, 0])
+axs[1].set_ylim([-50, 50])
 axs[1].set_xlim([0, 100])
 axs[1].set_xlabel("Accuracy (%)")
 axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
