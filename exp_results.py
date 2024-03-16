@@ -6,7 +6,7 @@ import seaborn as sns
 from scipy.stats import ttest_rel
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 
-from session_manager import CMD_MAP, FREQS, OBJ_COORDS, OBJ_H, OBJ_R
+from session_manager import CMD_MAP, FREQS
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -15,13 +15,20 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3", "P4"]
-F_LAYOUTS = [[8, 7, 13, 11, 9], [7, 13, 11, 8, 9], [8, 13, 11, 9, 7], [8, 9, 7, 13, 11]]
+P_IDS = ["P1", "P2", "P3", "P4", "P5"]
+F_LAYOUTS = [
+    [8, 7, 13, 11, 9],
+    [7, 13, 11, 8, 9],
+    [8, 13, 11, 9, 7],
+    [8, 9, 7, 13, 11],
+    [13, 9, 11, 8, 7],
+]
 T0S = [
     [0.033, -0.008, -0.013],
     [-0.007, -0.003, -0.038],
     [0.036, 0.010, -0.003],
     [0.002, 0.019, -0.035],
+    [0.007, -0.003, 0.034],
 ]
 
 # %% Starting positions
@@ -83,9 +90,9 @@ for p_id in P_IDS:
 # confusion matrix
 fig, axs = plt.subplots(1, 1, figsize=(3, 3))
 mean_cm = np.mean(cms, axis=0)
-std_cm = np.std(cms, axis=0)
+sterr_cm = np.std(cms, axis=0) / np.sqrt(len(cms))
 annots = [
-    ["%.1f\n(%.1f)" % (mean_cm[_r, _c], std_cm[_r, _c]) for _c in range(len(CMDS))]
+    ["%.1f\n(%.1f)" % (mean_cm[_r, _c], sterr_cm[_r, _c]) for _c in range(len(CMDS))]
     for _r in range(len(CMDS))
 ]
 sns.heatmap(
@@ -252,7 +259,6 @@ axs[1].set_ylim([-50, 50])
 axs[1].set_xlim([0, 100])
 axs[1].set_xlabel("Accuracy (%)")
 axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
-
 
 fig.tight_layout()
 sns.despine()

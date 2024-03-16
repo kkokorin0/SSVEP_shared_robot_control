@@ -373,17 +373,6 @@ class ExperimentGuiApp:
                 ef_pose = reachy_robot.move_continuously(u_cmb, ef_pose)
             data_msg = "X:" + ",".join(["%.3f" % _x for _x in ef_pose[:3, 3]]) + " "
 
-            # check if an object has been reached
-            reached_obj = self.shared_controller.check_collision(ef_pose[:3, 3])
-            if reached_obj is not None:
-                self.marker_stream.push_sample(
-                    ["reach:obj%d goal:obj%d" % (reached_obj, goal_obj)]
-                )
-                if reached_obj == goal_obj:
-                    self.success_button_cb()
-                else:
-                    self.fail_button_cb()
-
             # get new control command every sample_t
             if last_move_ms - last_stim_update_ms > self.sample_t:
                 self.toplevel.update()
