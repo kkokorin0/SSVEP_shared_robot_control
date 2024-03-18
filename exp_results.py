@@ -15,7 +15,7 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6"]
+P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7"]
 F_LAYOUTS = [
     [8, 7, 13, 11, 9],
     [7, 13, 11, 8, 9],
@@ -23,6 +23,7 @@ F_LAYOUTS = [
     [8, 9, 7, 13, 11],
     [13, 9, 11, 8, 7],
     [13, 7, 8, 9, 11],
+    [9, 8, 11, 7, 13],
 ]
 T0S = [
     [0.033, -0.008, -0.013],
@@ -31,6 +32,7 @@ T0S = [
     [0.002, 0.019, -0.035],
     [0.007, -0.003, 0.034],
     [-0.014, 0.033, 0.007],
+    [0.036, -0.010, -0.003],
 ]
 
 # %% Starting positions
@@ -156,7 +158,7 @@ sns.pointplot(
     ax=axs[1],
     order=["SC-DC"],
     errorbar=("ci", 95),
-    markers="o",
+    markers="D",
     palette=[c],
 )
 axs[1].set_ylim([0, 100])
@@ -223,9 +225,10 @@ fig.tight_layout()
 sns.despine()
 
 # compute t-test results
+valid_lens = session_df.dropna(subset=["len_cm"])
 test_frate = ttest_rel(
-    session_df[session_df.block == "SC"]["len_cm"],
-    session_df[session_df.block == "DC"]["len_cm"],
+    valid_lens[valid_lens.block == "SC"]["len_cm"],
+    valid_lens[valid_lens.block == "DC"]["len_cm"],
     alternative="two-sided",
 )
 ci = test_frate.confidence_interval()
@@ -263,7 +266,8 @@ axs[1].set_ylim([-50, 50])
 axs[1].set_xlim([0, 100])
 axs[1].set_xlabel("Accuracy (%)")
 axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
-r, p = pearsonr(acc_vs_sc_df.acc, acc_vs_sc_df.len_cm)
+valid_rel_lens = acc_vs_sc_df.dropna(subset=["len_cm"])
+r, p = pearsonr(valid_rel_lens.acc, valid_rel_lens.len_cm)
 print("dL vs acc correlation, r:%.3f, p: %.3f" % (r, p))
 
 fig.tight_layout()

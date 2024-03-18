@@ -38,7 +38,7 @@ CH_NAMES = [
 SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 T_NOM = np.array([0.250, -0.204, -0.276])
-P_ID = 6
+P_ID = 7
 FOLDER = (
     r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P"
     + str(P_ID)
@@ -190,7 +190,7 @@ online_df["label"] = (
     + " G"
     + online_df.goal
 )
-online_df.head()
+online_df.groupby("block_i")["trial"].max()
 
 # %% Extract step time and length across all blocks
 fig, axs = plt.subplots(2, 1, figsize=(4, 4), sharex=True, sharey=False)
