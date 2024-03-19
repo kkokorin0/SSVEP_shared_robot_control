@@ -15,7 +15,7 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7"]
+P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"]
 F_LAYOUTS = [
     [8, 7, 13, 11, 9],
     [7, 13, 11, 8, 9],
@@ -24,6 +24,7 @@ F_LAYOUTS = [
     [13, 9, 11, 8, 7],
     [13, 7, 8, 9, 11],
     [9, 8, 11, 7, 13],
+    [8, 9, 13, 7, 11],
 ]
 T0S = [
     [0.033, -0.008, -0.013],
@@ -33,6 +34,7 @@ T0S = [
     [0.007, -0.003, 0.034],
     [-0.014, 0.033, 0.007],
     [0.036, -0.010, -0.003],
+    [0.002, 0.019, -0.035],
 ]
 
 # %% Starting positions
@@ -136,7 +138,7 @@ sns.pointplot(
     palette=[c, c],
     dodge=True,
 )
-axs[0].set_ylim([0, 100])
+axs[0].set_ylim([0, 105])
 axs[0].set_ylabel("Success rate (%)")
 axs[0].set_xlabel("")
 axs[0].legend().remove()
@@ -161,7 +163,7 @@ sns.pointplot(
     markers="D",
     palette=[c],
 )
-axs[1].set_ylim([0, 100])
+axs[1].set_ylim([0, 105])
 axs[1].set_ylabel("$\Delta$ Success rate (%)")
 axs[1].set_xlabel("")
 fig.tight_layout()

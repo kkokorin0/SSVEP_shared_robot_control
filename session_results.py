@@ -38,7 +38,7 @@ CH_NAMES = [
 SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 T_NOM = np.array([0.250, -0.204, -0.276])
-P_ID = 7
+P_ID = 8
 FOLDER = (
     r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P"
     + str(P_ID)
