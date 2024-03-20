@@ -15,7 +15,7 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"]
+P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"]
 F_LAYOUTS = [
     [8, 7, 13, 11, 9],
     [7, 13, 11, 8, 9],
@@ -25,6 +25,7 @@ F_LAYOUTS = [
     [13, 7, 8, 9, 11],
     [9, 8, 11, 7, 13],
     [8, 9, 13, 7, 11],
+    [11, 9, 8, 7, 13],
 ]
 T0S = [
     [0.033, -0.008, -0.013],
@@ -35,6 +36,7 @@ T0S = [
     [-0.014, 0.033, 0.007],
     [0.036, -0.010, -0.003],
     [0.002, 0.019, -0.035],
+    [0.000, -0.011, -0.039],
 ]
 
 # %% Starting positions
