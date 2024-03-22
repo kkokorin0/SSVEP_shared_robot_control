@@ -15,7 +15,9 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"]
+P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"]
+P_ID_LOW = ["P7", "P9"]
+P_ID_HIGH = list(set(P_IDS) - set(P_ID_LOW))
 F_LAYOUTS = [
     [8, 7, 13, 11, 9],
     [7, 13, 11, 8, 9],
@@ -26,6 +28,7 @@ F_LAYOUTS = [
     [9, 8, 11, 7, 13],
     [8, 9, 13, 7, 11],
     [11, 9, 8, 7, 13],
+    [13, 7, 8, 9, 11],
 ]
 T0S = [
     [0.033, -0.008, -0.013],
@@ -37,6 +40,7 @@ T0S = [
     [0.036, -0.010, -0.003],
     [0.002, 0.019, -0.035],
     [0.000, -0.011, -0.039],
+    [0.023, 0.009, -0.028],
 ]
 
 # %% Starting positions
@@ -116,6 +120,37 @@ sns.heatmap(
 axs.set_xlabel("Predicted")
 axs.set_ylabel("True")
 
+# %% Decoding performance by frequency
+f_cms = []
+for p_id, p_freqs in zip(P_IDS, F_LAYOUTS):
+    data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
+    freq_map = {_d: _f for _f, _d in zip(p_freqs, CMD_MAP.keys())}
+
+    preds = [freq_map[_p] for _p in data[data.block == "OBS"].pred]
+    labels = [freq_map[_l] for _l in data[data.block == "OBS"].goal]
+    f_cms.append(confusion_matrix(labels, preds, normalize="true", labels=FREQS) * 100)
+
+# confusion matrix
+fig, axs = plt.subplots(1, 1, figsize=(3, 3))
+mean_cm = np.mean(f_cms, axis=0)
+sterr_cm = np.std(f_cms, axis=0) / np.sqrt(len(f_cms))
+annots = [
+    ["%.1f\n(%.1f)" % (mean_cm[_r, _c], sterr_cm[_r, _c]) for _c in range(len(CMDS))]
+    for _r in range(len(CMDS))
+]
+sns.heatmap(
+    mean_cm,
+    annot=annots,
+    fmt="s",
+    cmap="Purples",
+    cbar=False,
+    xticklabels=FREQS,
+    yticklabels=FREQS,
+    ax=axs,
+)
+axs.set_xlabel("Predicted")
+axs.set_ylabel("True")
+
 # %% Success rates
 # load session data
 sessions = []
@@ -131,14 +166,26 @@ session_df["p_id"] = np.repeat(P_IDS, 3)
 c = sns.color_palette()[0]
 fig, axs = plt.subplots(1, 2, figsize=(4, 3), width_ratios=[2, 1])
 sns.pointplot(
-    data=session_df,
+    data=session_df[session_df.p_id.isin(P_ID_HIGH)],
     x="block",
     y="success_rate",
     ax=axs[0],
     hue="p_id",
     order=["DC", "SC"],
     palette=[c, c],
-    dodge=True,
+    dodge=False,
+)
+sns.pointplot(
+    data=session_df[session_df.p_id.isin(P_ID_LOW)],
+    x="block",
+    y="success_rate",
+    ax=axs[0],
+    hue="p_id",
+    order=["DC", "SC"],
+    palette=[c, c],
+    dodge=False,
+    markers="x",
+    linestyle="--",
 )
 axs[0].set_ylim([0, 105])
 axs[0].set_ylabel("Success rate (%)")
@@ -147,12 +194,12 @@ axs[0].legend().remove()
 
 # change in success rates
 sns.swarmplot(
-    data=session_df,
+    data=session_df[session_df.p_id.isin(P_ID_HIGH)],
     x="block",
     y="success_rate",
     ax=axs[1],
     order=["SC-DC"],
-    alpha=0.75,
+    alpha=0.5,
     palette=[c],
 )
 sns.pointplot(
@@ -188,14 +235,26 @@ print(
 c = sns.color_palette()[1]
 fig, axs = plt.subplots(1, 2, figsize=(4, 3), width_ratios=[2, 1])
 sns.pointplot(
-    data=session_df,
+    data=session_df[session_df.p_id.isin(P_ID_HIGH)],
     x="block",
     y="len_cm",
     ax=axs[0],
     hue="p_id",
     order=["DC", "SC"],
     palette=[c, c],
-    dodge=True,
+    dodge=False,
+)
+low_len_df = session_df[session_df.p_id.isin(P_ID_LOW)].copy()
+sns.pointplot(
+    data=low_len_df,
+    x="block",
+    y="len_cm",
+    ax=axs[0],
+    hue="p_id",
+    order=["DC", "SC"],
+    palette=[c, c],
+    dodge=False,
+    markers="x",
 )
 axs[0].set_ylim([20, 70])
 axs[0].set_ylabel("Trajectory length (cm)")
@@ -209,7 +268,7 @@ sns.swarmplot(
     y="len_cm",
     ax=axs[1],
     order=["SC-DC"],
-    alpha=0.75,
+    alpha=0.5,
     palette=[c],
 )
 sns.pointplot(
@@ -219,7 +278,7 @@ sns.pointplot(
     ax=axs[1],
     order=["SC-DC"],
     errorbar=("ci", 95),
-    markers="o",
+    markers="D",
     palette=[c],
 )
 axs[1].set_ylim([-30, 30])
@@ -229,7 +288,7 @@ fig.tight_layout()
 sns.despine()
 
 # compute t-test results
-valid_lens = session_df.dropna(subset=["len_cm"])
+valid_lens = session_df[session_df.p_id.isin(P_IDS)].copy()
 test_length = ttest_rel(
     valid_lens[valid_lens.block == "SC"]["len_cm"],
     valid_lens[valid_lens.block == "DC"]["len_cm"],
@@ -254,7 +313,27 @@ sns.regplot(
     y="success_rate",
     ax=axs[0],
     color=sns.color_palette()[0],
+    marker="",
 )
+sns.regplot(
+    data=acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_HIGH)],
+    x="acc",
+    y="success_rate",
+    ax=axs[0],
+    color=sns.color_palette()[0],
+    marker="o",
+    fit_reg=False,
+)
+sns.regplot(
+    data=acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_LOW)],
+    x="acc",
+    y="success_rate",
+    ax=axs[0],
+    color=sns.color_palette()[0],
+    marker="x",
+    fit_reg=False,
+)
+
 axs[0].set_ylim([-100, 100])
 axs[0].set_xlim([40, 100])
 axs[0].set_xlabel("Accuracy (%)")
@@ -303,14 +382,26 @@ wl_df = hf_df.melt(id_vars=["ID"], value_vars=["DC Total", "SC Total"]).copy()
 wl_df["mode"] = wl_df["variable"].apply(lambda x: x.split(" ")[0])
 c = sns.color_palette()[4]
 sns.pointplot(
-    data=wl_df,
+    data=wl_df[wl_df.ID.isin(P_ID_HIGH)],
     x="mode",
     y="value",
     hue="ID",
     ax=axs[1],
     order=["DC", "SC"],
     palette=[c, c],
-    dodge=True,
+    dodge=False,
+)
+sns.pointplot(
+    data=wl_df[wl_df.ID.isin(P_ID_LOW)],
+    x="mode",
+    y="value",
+    hue="ID",
+    ax=axs[1],
+    order=["DC", "SC"],
+    palette=[c, c],
+    dodge=False,
+    markers="x",
+    linestyles="--",
 )
 axs[1].set_ylim([0, 105])
 axs[1].set_ylabel("Workload")
@@ -332,7 +423,7 @@ sns.pointplot(
     markers="o",
     palette=[c],
 )
-axs[2].set_ylim([-30, 0])
+axs[2].set_ylim([-30, 30])
 axs[2].set_ylabel("$\Delta$ Workload")
 axs[2].set_xticklabels(["SC-DC"])
 axs[2].set_xlabel("Mode")
