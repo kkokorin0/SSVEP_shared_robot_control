@@ -230,15 +230,15 @@ sns.despine()
 
 # compute t-test results
 valid_lens = session_df.dropna(subset=["len_cm"])
-test_frate = ttest_rel(
+test_length = ttest_rel(
     valid_lens[valid_lens.block == "SC"]["len_cm"],
     valid_lens[valid_lens.block == "DC"]["len_cm"],
     alternative="two-sided",
 )
-ci = test_frate.confidence_interval()
+ci = test_length.confidence_interval()
 print(
     "t-test (SC-DC), t:%.3f, p: %.3f, ci: (%.3f,%.3f)"
-    % (test_frate.statistic, test_frate.pvalue, ci.low, ci.high)
+    % (test_length.statistic, test_length.pvalue, ci.low, ci.high)
 )
 
 # %% Decoding accuracy vs impact of shared control
@@ -256,7 +256,7 @@ sns.regplot(
     color=sns.color_palette()[0],
 )
 axs[0].set_ylim([-100, 100])
-axs[0].set_xlim([0, 100])
+axs[0].set_xlim([40, 100])
 axs[0].set_xlabel("Accuracy (%)")
 axs[0].set_ylabel("$\Delta$ Success rate (%)")
 r, p = pearsonr(acc_vs_sc_df.acc, acc_vs_sc_df.success_rate)
@@ -267,7 +267,7 @@ sns.regplot(
     data=acc_vs_sc_df, x="acc", y="len_cm", ax=axs[1], color=sns.color_palette()[1]
 )
 axs[1].set_ylim([-50, 50])
-axs[1].set_xlim([0, 100])
+axs[1].set_xlim([40, 100])
 axs[1].set_xlabel("Accuracy (%)")
 axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
 valid_rel_lens = acc_vs_sc_df.dropna(subset=["len_cm"])
@@ -276,3 +276,128 @@ print("dL vs acc correlation, r:%.3f, p: %.3f" % (r, p))
 
 fig.tight_layout()
 sns.despine()
+
+# %% Workload
+hf_df = pd.read_csv(FOLDER + "//human_factors.csv", index_col=None)
+fig, axs = plt.subplots(1, 3, figsize=(6, 3), width_ratios=[3, 2, 1])
+
+# factor tally
+factors = ["Mental", "Physical", "Temporal", "Performance", "Effort", "Frustration"]
+factor_labels = ["MD", "PD", "TD", "P", "E", "F"]
+sns.barplot(
+    data=hf_df.melt(id_vars=["ID"], value_vars=factors),
+    x="variable",
+    y="value",
+    ax=axs[0],
+    errorbar="se",
+    order=factors,
+    color=sns.color_palette()[3],
+)
+axs[0].set_ylabel("Weight")
+axs[0].set_ylim([0, 5])
+axs[0].set_xticklabels(factor_labels)
+axs[0].set_xlabel("Factor")
+
+# workload
+wl_df = hf_df.melt(id_vars=["ID"], value_vars=["DC Total", "SC Total"]).copy()
+wl_df["mode"] = wl_df["variable"].apply(lambda x: x.split(" ")[0])
+c = sns.color_palette()[4]
+sns.pointplot(
+    data=wl_df,
+    x="mode",
+    y="value",
+    hue="ID",
+    ax=axs[1],
+    order=["DC", "SC"],
+    palette=[c, c],
+    dodge=True,
+)
+axs[1].set_ylim([0, 105])
+axs[1].set_ylabel("Workload")
+axs[1].set_xlabel("Mode")
+axs[1].legend().remove()
+
+# change in workload
+hf_df["dWL"] = hf_df["SC Total"] - hf_df["DC Total"]
+sns.swarmplot(
+    y=hf_df["SC Total"] - hf_df["DC Total"],
+    ax=axs[2],
+    alpha=0.75,
+    palette=[c],
+)
+sns.pointplot(
+    y=hf_df["SC Total"] - hf_df["DC Total"],
+    ax=axs[2],
+    errorbar=("ci", 95),
+    markers="o",
+    palette=[c],
+)
+axs[2].set_ylim([-30, 0])
+axs[2].set_ylabel("$\Delta$ Workload")
+axs[2].set_xticklabels(["SC-DC"])
+axs[2].set_xlabel("Mode")
+fig.tight_layout()
+sns.despine()
+
+test_wl = ttest_rel(
+    hf_df["SC Total"],
+    hf_df["DC Total"],
+    alternative="two-sided",
+)
+ci = test_wl.confidence_interval()
+print(
+    "t-test (SC-DC), t:%.3f, p: %.3f, ci: (%.3f,%.3f)"
+    % (test_wl.statistic, test_wl.pvalue, ci.low, ci.high)
+)
+
+# %% Embodiment
+fig, axs = plt.subplots(1, 1, figsize=(4, 4))
+emb_df = hf_df.melt(
+    id_vars=["ID"],
+    value_vars=np.array(
+        [["SC Q%d" % _i, "DC Q%d" % _i] for _i in range(1, 10)]
+    ).flatten(),
+).copy()
+emb_df["mode"] = emb_df["variable"].apply(lambda x: x.split(" ")[0])
+emb_df["Q"] = emb_df["variable"].apply(lambda x: x.split(" ")[1])
+emb_df["value"] = (emb_df["value"] - 3) * -1
+
+sns.barplot(
+    data=emb_df,
+    x="value",
+    y="Q",
+    orient="h",
+    hue="mode",
+    errorbar="se",
+    ax=axs,
+    palette=[sns.color_palette()[5], sns.color_palette()[6]],
+)
+axs.set_xlim([-2, 2])
+axs.set_xticklabels(
+    [
+        "-2\nStrongly\n disagree",
+        "-1",
+        "0\nNeutral",
+        "1",
+        "2\nStrongly\n agree",
+    ]
+)
+axs.set_xlabel("")
+axs.legend(title="")
+# it seemed like...
+axs.set_yticklabels(
+    [
+        "I was looking directly at my own\narm rather than a robotic arm",
+        "the robotic arm began to\nresemble my real arm",
+        "the robotic arm belonged\nto me",
+        "the robotic arm was my arm",
+        "the robotic arm was part of\nmy body",
+        "my arm was in the location\nwhere the robotic arm was",
+        "I could feel the robotic arm\ntouch the object",
+        "I could move the robotic arm\nif I wanted to",
+        "I was in control of the\nrobotic arm",
+    ]
+)
+axs.set_ylabel("")
+sns.despine()
+fig.tight_layout()
