@@ -15,7 +15,7 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"]
+P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"]
 P_ID_LOW = ["P7", "P9"]
 P_ID_HIGH = list(set(P_IDS) - set(P_ID_LOW))
 F_LAYOUTS = [
@@ -29,6 +29,7 @@ F_LAYOUTS = [
     [8, 9, 13, 7, 11],
     [11, 9, 8, 7, 13],
     [13, 7, 8, 9, 11],
+    [11, 13, 8, 7, 9],
 ]
 T0S = [
     [0.033, -0.008, -0.013],
@@ -41,6 +42,7 @@ T0S = [
     [0.002, 0.019, -0.035],
     [0.000, -0.011, -0.039],
     [0.023, 0.009, -0.028],
+    [0.035, -0.006, -0.011],
 ]
 
 # %% Starting positions
@@ -226,7 +228,7 @@ test_frate = ttest_rel(
 )
 ci = test_frate.confidence_interval()
 print(
-    "t-test (SC-DC), t:%.3f, p: %.3f, ci: (%.3f,%.3f)"
+    "t-test (SC-DC), t:%.3f, p: %.4f, ci: (%.3f,%.3f)"
     % (test_frate.statistic, test_frate.pvalue, ci.low, ci.high)
 )
 
@@ -288,7 +290,7 @@ fig.tight_layout()
 sns.despine()
 
 # compute t-test results
-valid_lens = session_df[session_df.p_id.isin(P_IDS)].copy()
+valid_lens = session_df[session_df.p_id.isin(P_ID_HIGH)].copy()
 test_length = ttest_rel(
     valid_lens[valid_lens.block == "SC"]["len_cm"],
     valid_lens[valid_lens.block == "DC"]["len_cm"],
@@ -296,7 +298,7 @@ test_length = ttest_rel(
 )
 ci = test_length.confidence_interval()
 print(
-    "t-test (SC-DC), t:%.3f, p: %.3f, ci: (%.3f,%.3f)"
+    "t-test (SC-DC), t:%.3f, p: %.4f, ci: (%.3f,%.3f)"
     % (test_length.statistic, test_length.pvalue, ci.low, ci.high)
 )
 
@@ -346,7 +348,6 @@ sns.regplot(
     data=acc_vs_sc_df, x="acc", y="len_cm", ax=axs[1], color=sns.color_palette()[1]
 )
 axs[1].set_ylim([-50, 50])
-axs[1].set_xlim([40, 100])
 axs[1].set_xlabel("Accuracy (%)")
 axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
 valid_rel_lens = acc_vs_sc_df.dropna(subset=["len_cm"])

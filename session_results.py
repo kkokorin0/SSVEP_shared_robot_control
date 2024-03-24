@@ -38,7 +38,7 @@ CH_NAMES = [
 SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 T_NOM = np.array([0.250, -0.204, -0.276])
-P_ID = 9
+P_ID = 11
 FOLDER = (
     r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P"
     + str(P_ID)
@@ -237,16 +237,16 @@ conf_mat = confusion_matrix(
     obs_df["goal"], obs_df["pred"], normalize="true", labels=CMDS
 )
 sns.heatmap(
-    conf_mat,
+    conf_mat * 100,
     annot=True,
-    fmt=".2f",
+    fmt=".1f",
     cmap="Blues",
     cbar=False,
     xticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
     yticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
     ax=axs,
 )
-axs.set_title("%.3f" % balanced_accuracy_score(obs_df["goal"], obs_df["pred"]))
+axs.set_title("%.1f" % (100 * balanced_accuracy_score(obs_df["goal"], obs_df["pred"])))
 axs.set_xlabel("Predicted")
 axs.set_ylabel("True")
 
