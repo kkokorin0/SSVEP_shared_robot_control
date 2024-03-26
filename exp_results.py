@@ -15,8 +15,8 @@ sns.set_palette("colorblind")
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
-P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11"]
-P_ID_LOW = ["P7", "P9"]
+P_IDS = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "P11", "P12"]
+P_ID_LOW = ["P7", "P9", "P12"]
 P_ID_HIGH = list(set(P_IDS) - set(P_ID_LOW))
 F_LAYOUTS = [
     [8, 7, 13, 11, 9],
@@ -30,6 +30,7 @@ F_LAYOUTS = [
     [11, 9, 8, 7, 13],
     [13, 7, 8, 9, 11],
     [11, 13, 8, 7, 9],
+    [11, 9, 13, 8, 7],
 ]
 T0S = [
     [0.033, -0.008, -0.013],
@@ -43,6 +44,7 @@ T0S = [
     [0.000, -0.011, -0.039],
     [0.023, 0.009, -0.028],
     [0.035, -0.006, -0.011],
+    [0.020, -0.032, 0.009],
 ]
 
 # %% Starting positions
@@ -337,7 +339,7 @@ sns.regplot(
 )
 
 axs[0].set_ylim([-100, 100])
-axs[0].set_xlim([40, 100])
+axs[0].set_xlim([0, 100])
 axs[0].set_xlabel("Accuracy (%)")
 axs[0].set_ylabel("$\Delta$ Success rate (%)")
 r, p = pearsonr(acc_vs_sc_df.acc, acc_vs_sc_df.success_rate)
