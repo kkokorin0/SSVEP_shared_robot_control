@@ -38,7 +38,7 @@ CH_NAMES = [
 SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 T_NOM = np.array([0.250, -0.204, -0.276])
-P_ID = 12
+P_ID = 13
 FOLDER = (
     r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P"
     + str(P_ID)
@@ -296,7 +296,7 @@ axs[1].set_ylim([-100, 100])
 # trajectory length
 sns.barplot(data=session_df, x="block", y="len_cm", ax=axs[2])
 axs[2].set_ylabel("Trajectory length (cm)")
-axs[2].set_ylim([0, 60])
+axs[2].set_ylim([0, 80])
 
 # change in trajectory length
 dL = (
@@ -329,13 +329,17 @@ n_pts = 10
 mpl.rcParams.update(mpl.rcParamsDefault)
 start_poss = []
 for label in test_df.label.unique():
+    trial = test_df[test_df.label == label]
+    col = "r"  # collision
+    if trial.success.max():
+        col = "g"  # success
+
     fig = plt.figure(figsize=(10, 7))
     ax = plt.axes(projection="3d")
-    ax.set_title(label)
+    ax.set_title(label + f' {sum(trial["dt"]):.1f}s')
 
     # trajectories
-    traj = np.array(test_df[test_df.label == label][["x", "y", "z"]]) - T_NOM
-    col = "g" if test_df[test_df.label == label].success.max() else "r"
+    traj = np.array(trial[["x", "y", "z"]]) - T_NOM
     ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col, alpha=0.7)
     ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], "kx")
     start_poss.append(traj[0, :])
@@ -348,7 +352,7 @@ for label in test_df.label.unique():
         theta_grid, z_grid = np.meshgrid(theta, z)
         x_grid = OBJ_R * np.cos(theta_grid) + xc
         y_grid = OBJ_R * np.sin(theta_grid) + yc
-        obj_col = "g" if test_obj == test_df[test_df.label == label].goal.max() else "r"
+        obj_col = "g" if test_obj == trial.goal.max() else "r"
         ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color=obj_col)
 
     ax.set_box_aspect([1, 1, 1])
