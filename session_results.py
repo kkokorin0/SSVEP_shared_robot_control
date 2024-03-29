@@ -4,13 +4,25 @@ from datetime import datetime
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import mne
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
-
-from decoding import extract_events, load_recording
-from session_manager import CMD_MAP, FS, OBJ_COORDS, OBJ_H, OBJ_R
+from decoding import BandpassFilter, Decoder, extract_events, load_recording
+from session_manager import (
+    CMD_MAP,
+    FILTER_ORDER,
+    FMAX,
+    FMIN,
+    FS,
+    HARMONICS,
+    OBJ_COORDS,
+    OBJ_H,
+    OBJ_R,
+    OBS_TRIAL_MS,
+    SAMPLE_T_MS,
+)
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -38,7 +50,7 @@ CH_NAMES = [
 SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 T_NOM = np.array([0.250, -0.204, -0.276])
-P_ID = 14
+P_ID = 16
 FOLDER = (
     r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P"
     + str(P_ID)
@@ -324,7 +336,19 @@ session_df.to_csv(
 session_df.head()
 
 # %% 3D reaching trajectories
-# %matplotlib qt
+%matplotlib qt
+shelf_dims = {'x':0.430, 'y':-0.220, 'z':[-0.160, -0.270, -0.380], 'w':0.400, 'd':0.100, 'h':0.006}
+support_dims = {'x':0.430, 'y':[-0.415, -0.025], 'z':-0.270, 'w':0.010, 'd':0.100, 'h':0.220}
+
+def plot_box(x, y, z, ax, alpha, col):
+    x_grid, y_grid, z_grid = np.meshgrid(x, y, z)
+    ax.plot_surface(x_grid[0, :, :], y_grid[0, :, :], z_grid[0, :, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[1, :, :], y_grid[1, :, :], z_grid[1, :, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, 0, :], y_grid[:, 0, :], z_grid[:, 0, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, 1, :], y_grid[:, 1, :], z_grid[:, 1, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, :, 0], y_grid[:, :, 0], z_grid[:, :, 0], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, :, 1], y_grid[:, :, 1], z_grid[:, :, 1], alpha=alpha, color=col)    
+
 n_pts = 10
 mpl.rcParams.update(mpl.rcParamsDefault)
 start_poss = []
@@ -354,6 +378,22 @@ for label in test_df.label.unique():
         y_grid = OBJ_R * np.sin(theta_grid) + yc
         obj_col = "g" if test_obj == trial.goal.max() else "r"
         ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color=obj_col)
+        
+    # shelf racks
+    for shelf_z in shelf_dims['z']:
+        xc, yc, zc = np.array([shelf_dims['x'], shelf_dims['y'], shelf_z]) - T_NOM
+        x = [xc - shelf_dims['d'] / 2, xc + shelf_dims['d'] / 2]
+        y = [yc - shelf_dims['w'] / 2, yc + shelf_dims['w'] / 2]
+        z = [zc - shelf_dims['h'], zc]
+        plot_box(x, y, z, ax, alpha=0.2, col='grey')
+    
+    # shelf sides
+    for support_y in support_dims['y']:
+        xc, yc, zc = np.array([support_dims['x'], support_y, support_dims['z']]) - T_NOM
+        x = [xc - support_dims['d'] / 2, xc + support_dims['d'] / 2]
+        y = [yc - support_dims['w'] / 2, yc + support_dims['w'] / 2]
+        z = [zc-support_dims['h']/2, zc + support_dims['h']/2]
+        plot_box(x, y, z, ax, alpha=0.2, col='grey')
 
     ax.set_box_aspect([1, 1, 1])
     ax.set_xlim([-0.3, 0.3])
@@ -366,3 +406,60 @@ for label in test_df.label.unique():
 print("T0 mean: %s " % ["%.3f" % _x for _x in np.mean(start_poss, axis=0)])
 print("T0 std: %s" % ["%.3f" % _x for _x in np.std(start_poss, axis=0)])
 plt.show()
+
+# %% Offline decoding with variable window size
+raw, events = load_recording(CH_NAMES, FOLDER, f"P{P_ID}_S1_R1.xdf")
+obs_events = extract_events(events, [f"go:{_c}" for _c in CMDS])
+freqs = [int(_f) for _f in extract_events(events, ["freqs"])[0][2][-11:].split(",")]
+bp_filt = BandpassFilter(FILTER_ORDER, FS, FMIN, FMAX, len(SSVEP_CHS))
+
+# load observation run data
+Nch = len(SSVEP_CHS)
+filt = mne.io.RawArray(
+    bp_filt.filter(raw.get_data(SSVEP_CHS)), mne.create_info(Nch, FS, ["eeg"] * Nch)
+)
+epochs = mne.Epochs(
+    filt,
+    [[_e[0], _e[1], ord(_e[2].split(":")[-1])] for _e in obs_events],
+    tmin=0,
+    tmax=OBS_TRIAL_MS / 1000,
+    baseline=None,
+)
+
+fig, axs = plt.subplots(1, 5, figsize=(15, 3))
+for window_s, ax in zip([1, 1.5, 2, 2.5, 3], axs):
+    decoder = Decoder(window_s, FS, HARMONICS, freqs)
+
+    # offline decoder prediction
+    y_actual = []
+    y_preds = []
+    N_w = int(window_s * FS)
+    N_c = int(SAMPLE_T_MS / 1000 * FS)
+    for trial_i, data in enumerate(epochs.get_data()):
+        label = obs_events[trial_i][2][-1]
+        for sample_i in range(N_w, data.shape[1], N_c):
+            y_actual.append(label)
+            pred = decoder.predict(data[:, sample_i - N_w : sample_i])
+            y_preds.append(list(CMD_MAP.keys())[pred])
+
+    conf_mat = confusion_matrix(y_actual, y_preds, normalize="true", labels=CMDS)
+
+    # confusion matrix
+    sns.heatmap(
+        conf_mat * 100,
+        annot=True,
+        fmt=".1f",
+        cmap="Blues",
+        cbar=False,
+        xticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
+        yticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
+        ax=ax,
+    )
+    ax.set_title(
+        f"{100 * balanced_accuracy_score(y_actual, y_preds):.1f} ({window_s:.1f}s)"
+    )
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+
+fig.tight_layout()
+plt.savefig(FOLDER + "//offline_decoding_acc.svg", format="svg")

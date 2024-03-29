@@ -16,10 +16,8 @@ sns.set_palette("colorblind")
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
 P_IDS = [
-    "P1",
     "P2",
     "P3",
-    "P4",
     "P5",
     "P6",
     "P7",
@@ -27,17 +25,16 @@ P_IDS = [
     "P9",
     "P10",
     "P11",
-    "P12",
     "P13",
     "P14",
+    "P15",
+    "P16",
 ]
-P_ID_LOW = ["P7", "P9", "P12"]
+P_ID_LOW = ["P7", "P9"]
 P_ID_HIGH = list(set(P_IDS) - set(P_ID_LOW))
 F_LAYOUTS = [
-    [8, 7, 13, 11, 9],
     [7, 13, 11, 8, 9],
     [8, 13, 11, 9, 7],
-    [8, 9, 7, 13, 11],
     [13, 9, 11, 8, 7],
     [13, 7, 8, 9, 11],
     [9, 8, 11, 7, 13],
@@ -45,52 +42,11 @@ F_LAYOUTS = [
     [11, 9, 8, 7, 13],
     [13, 7, 8, 9, 11],
     [11, 13, 8, 7, 9],
-    [11, 9, 13, 8, 7],
     [9, 13, 11, 7, 8],
     [7, 8, 11, 9, 13],
+    [8, 7, 9, 11, 13],
+    [9, 11, 8, 13, 7],
 ]
-T0S = [
-    [0.033, -0.008, -0.013],
-    [-0.007, -0.003, -0.038],
-    [0.036, 0.010, -0.003],
-    [0.002, 0.019, -0.035],
-    [0.007, -0.003, 0.034],
-    [-0.014, 0.033, 0.007],
-    [0.036, -0.010, -0.003],
-    [0.002, 0.019, -0.035],
-    [0.000, -0.011, -0.039],
-    [0.023, 0.009, -0.028],
-    [0.035, -0.006, -0.011],
-    [0.020, -0.032, 0.009],
-    [-0.025, 0.024, -0.004],
-    [0.037, 0.002, 0.001],
-]
-
-# %% Starting positions
-# %matplotlib qt
-n_pts = 10
-fig = plt.figure(figsize=(10, 7))
-ax = plt.axes(projection="3d")
-
-# mean start positions
-for t0 in T0S:
-    ax.plot(t0[0], t0[1], t0[2], "kx")
-ax.plot(0, 0, 0, "ro")
-
-ax.set_box_aspect([1, 1, 1])
-ax.set_xlim([-0.5, 0.5])
-ax.set_xlabel("x (m)")
-ax.set_ylim([-0.5, 0.5])
-ax.set_ylabel("y (m)")
-ax.set_zlim([-0.5, 0.5])
-ax.set_zlabel("z (m)")
-plt.show()
-
-offset_distane_cm = [np.linalg.norm(_t) * 100 for _t in T0S]
-print(
-    "Offset distance (cm): %.3f+-%0.3f"
-    % (np.mean(offset_distane_cm), np.std(offset_distane_cm)),
-)
 
 # %% Frequency layouts
 fig, axs = plt.subplots(1, 1, figsize=(3, 3))
@@ -279,7 +235,7 @@ sns.pointplot(
     dodge=False,
     markers="x",
 )
-axs[0].set_ylim([20, 70])
+axs[0].set_ylim([20, 80])
 axs[0].set_ylabel("Trajectory length (cm)")
 axs[0].set_xlabel("")
 axs[0].legend().remove()
@@ -378,8 +334,30 @@ print("dL vs acc correlation, r:%.3f, p: %.3f" % (r, p))
 fig.tight_layout()
 sns.despine()
 
+# %% Offline decoding recall with variable window sizes
+window_df = pd.read_csv(FOLDER + "//variable_window.csv", index_col=None)
+fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharey=True)
+for p_id, ax in zip(window_df["p_id"].unique(), axs):
+    data = window_df[window_df.p_id == p_id].copy()
+    sns.pointplot(data=data, ax=ax, x="window_s", y="recall", hue="freq", join=True)
+    # sns.regplot(data=data, ax=ax, x="window_s", y="recall", marker='')
+
+    r, p = pearsonr(data.window_s, data.recall)
+    print(f"P{p_id} recall vs window size correlation, r:{r:.3f}, p: {p:.3f}")
+    ax.set_title(f"P{p_id}")
+    ax.set_xlabel("Window size (s)")
+    ax.set_ylim([0, 105])
+    ax.axhline(20, linestyle="--", color="k", alpha=0.25)
+
+axs[0].set_ylabel("Recall (%)")
+axs[0].legend(title="", ncol=3, loc="upper center")
+axs[1].set_ylabel("")
+axs[1].legend().remove()
+fig.tight_layout()
+sns.despine()
+
 # %% Workload
-hf_df = pd.read_csv(FOLDER + "//human_factors.csv", index_col=None)
+hf_df = pd.read_csv(FOLDER + "//questionnaire.csv", index_col=None)
 fig, axs = plt.subplots(1, 3, figsize=(6, 3), width_ratios=[3, 2, 1])
 
 # factor tally
@@ -512,5 +490,87 @@ axs.set_yticklabels(
     ]
 )
 axs.set_ylabel("")
+sns.despine()
+fig.tight_layout()
+
+# %% Decoding accuracy vs questionnaire
+fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharey=True)
+acc_vs_q_df = pd.merge(hf_df, pd.DataFrame({"ID": P_IDS, "acc": accs}))
+
+# acc vs fatigue
+fatigue_id = {"Very low": 1, "Low": 2, "Medium": 3, "High": 4, "Very high": 5}
+acc_vs_q_df["Fatigue_id"] = acc_vs_q_df["Fatigue"].apply(lambda x: fatigue_id[x])
+sns.regplot(
+    data=acc_vs_q_df,
+    x="Fatigue_id",
+    y="acc",
+    ax=axs[0],
+    color=sns.color_palette()[7],
+    marker="",
+)
+sns.regplot(
+    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_HIGH)],
+    x="Fatigue_id",
+    y="acc",
+    ax=axs[0],
+    color=sns.color_palette()[7],
+    marker="o",
+    fit_reg=False,
+)
+sns.regplot(
+    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_LOW)],
+    x="Fatigue_id",
+    y="acc",
+    ax=axs[0],
+    color=sns.color_palette()[7],
+    marker="x",
+    fit_reg=False,
+)
+
+axs[0].set_ylim([0, 100])
+axs[0].set_xlim([1, 5])
+axs[0].set_xticklabels(fatigue_id.keys())
+axs[0].set_xlabel("Fatigue")
+axs[0].set_ylabel("Accuracy (%)")
+r, p = pearsonr(acc_vs_q_df.acc, acc_vs_q_df.Fatigue_id)
+print("fatigue vs acc correlation, r:%.3f, p: %.3f" % (r, p))
+
+# acc vs BCI experience
+BCI_exp_id = {"0h": 1, "<1h": 2, "<2h": 3, "<4h": 4, "<10h": 5, ">10h": 6}
+acc_vs_q_df["BCI_exp_id"] = acc_vs_q_df["BCI use"].apply(lambda x: BCI_exp_id[x])
+sns.regplot(
+    data=acc_vs_q_df,
+    x="BCI_exp_id",
+    y="acc",
+    ax=axs[1],
+    color=sns.color_palette()[8],
+    marker="",
+)
+sns.regplot(
+    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_HIGH)],
+    x="BCI_exp_id",
+    y="acc",
+    ax=axs[1],
+    color=sns.color_palette()[8],
+    marker="o",
+    fit_reg=False,
+)
+sns.regplot(
+    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_LOW)],
+    x="BCI_exp_id",
+    y="acc",
+    ax=axs[1],
+    color=sns.color_palette()[8],
+    marker="x",
+    fit_reg=False,
+)
+
+axs[1].set_xlim([1, 6])
+axs[1].set_xticklabels(BCI_exp_id.keys())
+axs[1].set_xlabel("BCI experience (h)")
+axs[1].set_ylabel("")
+r, p = pearsonr(acc_vs_q_df.acc, acc_vs_q_df.BCI_exp_id)
+print("BCI experience vs acc correlation, r:%.3f, p: %.3f" % (r, p))
+
 sns.despine()
 fig.tight_layout()
