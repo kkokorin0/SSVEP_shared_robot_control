@@ -1,4 +1,5 @@
 # %% Packages
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -601,3 +602,75 @@ print("BCI experience vs acc correlation, r:%.3f, p: %.3f" % (r, p))
 
 sns.despine()
 fig.tight_layout()
+
+# %% Plot reaching trajectories
+# %matplotlib qt
+participant = 5
+objs = ["0", "7"]
+mode = "SC"
+blocks = [3, 5, 6, 7]
+fig = plt.figure(figsize=(8, 6))
+ax = plt.axes(projection="3d")
+
+# layout
+origin = np.array([0.250, -0.204, -0.276])
+obj_0 = np.array([0.430, -0.100, -0.130])
+obj_dist = 0.11
+n_pts = 10
+obj_h = 0.06
+obj_r = 0.0225
+finger_r = 0.005
+obj_coords = np.array(
+    [
+        [[obj_0[0], obj_0[1] - obj_dist * i, obj_0[2] - obj_dist * j] for i in range(3)]
+        for j in range(3)
+    ]
+).reshape((-1, 3))
+
+# load data
+results = "P%d_results_tstep.csv" % participant
+online_df = pd.read_csv(FOLDER + "//" + results, index_col=0)
+reach_df = online_df[
+    online_df.block_i.isin(blocks)
+    & online_df.goal.isin(objs)
+    & (online_df.block == mode)
+].copy()
+reach_df["label"] = reach_df.block_i.map(str) + " " + reach_df.trial.map(str)
+
+# objects
+for obj_i, coords in enumerate(obj_coords):
+    if str(obj_i) in online_df.goal.unique():
+        xc, yc, zc = coords - origin
+        z = np.linspace(0, obj_h + 2 * finger_r, n_pts) - obj_h / 2 - finger_r + zc
+        theta = np.linspace(0, 2 * np.pi, n_pts)
+        theta_grid, z_grid = np.meshgrid(theta, z)
+        x_grid = (obj_r + finger_r) * np.cos(theta_grid) + xc
+        y_grid = (obj_r + finger_r) * np.sin(theta_grid) + yc
+        ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.3, color="grey")
+
+start_pos = []
+for label in reach_df.label.unique():
+    trial = reach_df[reach_df.label == label]
+    start_pos.append(np.array(trial[["x", "y", "z"]].values[0]) - origin)
+    col = sns.color_palette()[1 - trial.success.max()]
+
+    # trajectories
+    traj = np.array(trial[["x", "y", "z"]]) - origin
+    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], c=col, alpha=0.7)
+
+# plot starting point
+start_pos = np.array(start_pos).mean(axis=0)
+ax.plot(start_pos[0], start_pos[1], start_pos[2], "o", c="k", markersize=5)
+
+ax.set_box_aspect([1, 1, 1])
+ax.set_xlim([-0.1, 0.3])
+ax.set_xticks([-0.1, 0, 0.1, 0.2, 0.3])
+ax.set_xlabel("x (m)")
+ax.set_ylim([-0.2, 0.2])
+ax.set_yticks([-0.2, -0.1, 0, 0.1, 0.2])
+ax.set_ylabel("y (m)")
+ax.set_zlim([-0.2, 0.2])
+ax.set_zticks([-0.2, -0.1, 0, 0.1, 0.2])
+ax.set_zlabel("z (m)")
+
+plt.show()
