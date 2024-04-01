@@ -265,11 +265,86 @@ axs.set_ylabel("True")
 fig.tight_layout()
 plt.savefig(FOLDER + "//decoding_acc.svg", format="svg")
 
-# %% Reaching performance
+# %% Reaching trajectories
+%matplotlib qt
 test_blocks = [3, 5, 6, 7]
-
-# DC and SC trials
 test_df = online_df[online_df.block_i.isin(test_blocks)].copy()
+mode_df = test_df[(test_df.block == 'SC')].copy()
+max_duration = 38.5
+shelf_dims = {'x':0.430, 'y':-0.220, 'z':[-0.160, -0.270, -0.380], 'w':0.400, 'd':0.100, 'h':0.006}
+support_dims = {'x':0.430, 'y':[-0.415, -0.025], 'z':-0.270, 'w':0.010, 'd':0.100, 'h':0.220}
+
+def plot_box(x, y, z, ax, alpha, col):
+    x_grid, y_grid, z_grid = np.meshgrid(x, y, z)
+    ax.plot_surface(x_grid[0, :, :], y_grid[0, :, :], z_grid[0, :, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[1, :, :], y_grid[1, :, :], z_grid[1, :, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, 0, :], y_grid[:, 0, :], z_grid[:, 0, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, 1, :], y_grid[:, 1, :], z_grid[:, 1, :], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, :, 0], y_grid[:, :, 0], z_grid[:, :, 0], alpha=alpha, color=col)
+    ax.plot_surface(x_grid[:, :, 1], y_grid[:, :, 1], z_grid[:, :, 1], alpha=alpha, color=col)    
+
+n_pts = 10
+mpl.rcParams.update(mpl.rcParamsDefault)
+start_poss = []
+for label in mode_df.label.unique():
+    trial = mode_df[mode_df.label == label]
+    if trial.success.max():
+        col = "g"  # success
+    elif sum(trial["dt"]) > max_duration:
+        col = "b"  # timeout
+    else:
+        col = "r"  # collision
+
+    fig = plt.figure(figsize=(10, 7))
+    ax = plt.axes(projection="3d")
+    ax.set_title(label + f' {sum(trial["dt"]):.1f}s')
+
+    # trajectories
+    traj = np.array(trial[["x", "y", "z"]]) - T_NOM
+    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col, alpha=0.7)
+    ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], "kx")
+    start_poss.append(traj[0, :])
+
+    # cylinder objects
+    for test_obj in test_df.goal.unique():
+        xc, yc, zc = OBJ_COORDS[int(test_obj)] - T_NOM
+        z = np.linspace(0, OBJ_H, n_pts) - OBJ_H / 2 + zc
+        theta = np.linspace(0, 2 * np.pi, n_pts)
+        theta_grid, z_grid = np.meshgrid(theta, z)
+        x_grid = OBJ_R * np.cos(theta_grid) + xc
+        y_grid = OBJ_R * np.sin(theta_grid) + yc
+        obj_col = "g" if test_obj == trial.goal.max() else "r"
+        ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color=obj_col)
+        
+    # shelf racks
+    for shelf_z in shelf_dims['z']:
+        xc, yc, zc = np.array([shelf_dims['x'], shelf_dims['y'], shelf_z]) - T_NOM
+        x = [xc - shelf_dims['d'] / 2, xc + shelf_dims['d'] / 2]
+        y = [yc - shelf_dims['w'] / 2, yc + shelf_dims['w'] / 2]
+        z = [zc - shelf_dims['h'], zc]
+        plot_box(x, y, z, ax, alpha=0.2, col='grey')
+    
+    # shelf sides
+    for support_y in support_dims['y']:
+        xc, yc, zc = np.array([support_dims['x'], support_y, support_dims['z']]) - T_NOM
+        x = [xc - support_dims['d'] / 2, xc + support_dims['d'] / 2]
+        y = [yc - support_dims['w'] / 2, yc + support_dims['w'] / 2]
+        z = [zc-support_dims['h']/2, zc + support_dims['h']/2]
+        plot_box(x, y, z, ax, alpha=0.2, col='grey')
+
+    ax.set_box_aspect([1, 1, 1])
+    ax.set_xlim([-0.3, 0.3])
+    ax.set_xlabel("x (m)")
+    ax.set_ylim([-0.3, 0.3])
+    ax.set_ylabel("y (m)")
+    ax.set_zlim([-0.3, 0.3])
+    ax.set_zlabel("z (m)")
+
+print("T0 mean: %s " % ["%.3f" % _x for _x in np.mean(start_poss, axis=0)])
+print("T0 std: %s" % ["%.3f" % _x for _x in np.std(start_poss, axis=0)])
+plt.show()
+
+#%% DC and SC trials
 trial_df = test_df.groupby(by=["label", "block", "goal"])["success"].max().reset_index()
 trial_df["len_cm"] = list(test_df.groupby(["label"])["dL"].sum() / 10)
 
@@ -334,78 +409,6 @@ session_df.to_csv(
     + "//P%s_results_session_%s.csv" % (P_ID, datetime.now().strftime("%Y%m%d_%H%M%S"))
 )
 session_df.head()
-
-# %% 3D reaching trajectories
-%matplotlib qt
-shelf_dims = {'x':0.430, 'y':-0.220, 'z':[-0.160, -0.270, -0.380], 'w':0.400, 'd':0.100, 'h':0.006}
-support_dims = {'x':0.430, 'y':[-0.415, -0.025], 'z':-0.270, 'w':0.010, 'd':0.100, 'h':0.220}
-
-def plot_box(x, y, z, ax, alpha, col):
-    x_grid, y_grid, z_grid = np.meshgrid(x, y, z)
-    ax.plot_surface(x_grid[0, :, :], y_grid[0, :, :], z_grid[0, :, :], alpha=alpha, color=col)
-    ax.plot_surface(x_grid[1, :, :], y_grid[1, :, :], z_grid[1, :, :], alpha=alpha, color=col)
-    ax.plot_surface(x_grid[:, 0, :], y_grid[:, 0, :], z_grid[:, 0, :], alpha=alpha, color=col)
-    ax.plot_surface(x_grid[:, 1, :], y_grid[:, 1, :], z_grid[:, 1, :], alpha=alpha, color=col)
-    ax.plot_surface(x_grid[:, :, 0], y_grid[:, :, 0], z_grid[:, :, 0], alpha=alpha, color=col)
-    ax.plot_surface(x_grid[:, :, 1], y_grid[:, :, 1], z_grid[:, :, 1], alpha=alpha, color=col)    
-
-n_pts = 10
-mpl.rcParams.update(mpl.rcParamsDefault)
-start_poss = []
-for label in test_df.label.unique():
-    trial = test_df[test_df.label == label]
-    col = "r"  # collision
-    if trial.success.max():
-        col = "g"  # success
-
-    fig = plt.figure(figsize=(10, 7))
-    ax = plt.axes(projection="3d")
-    ax.set_title(label + f' {sum(trial["dt"]):.1f}s')
-
-    # trajectories
-    traj = np.array(trial[["x", "y", "z"]]) - T_NOM
-    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], col, alpha=0.7)
-    ax.plot(traj[0, 0], traj[0, 1], traj[0, 2], "kx")
-    start_poss.append(traj[0, :])
-
-    # cylinder objects
-    for test_obj in test_df.goal.unique():
-        xc, yc, zc = OBJ_COORDS[int(test_obj)] - T_NOM
-        z = np.linspace(0, OBJ_H, n_pts) - OBJ_H / 2 + zc
-        theta = np.linspace(0, 2 * np.pi, n_pts)
-        theta_grid, z_grid = np.meshgrid(theta, z)
-        x_grid = OBJ_R * np.cos(theta_grid) + xc
-        y_grid = OBJ_R * np.sin(theta_grid) + yc
-        obj_col = "g" if test_obj == trial.goal.max() else "r"
-        ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.8, color=obj_col)
-        
-    # shelf racks
-    for shelf_z in shelf_dims['z']:
-        xc, yc, zc = np.array([shelf_dims['x'], shelf_dims['y'], shelf_z]) - T_NOM
-        x = [xc - shelf_dims['d'] / 2, xc + shelf_dims['d'] / 2]
-        y = [yc - shelf_dims['w'] / 2, yc + shelf_dims['w'] / 2]
-        z = [zc - shelf_dims['h'], zc]
-        plot_box(x, y, z, ax, alpha=0.2, col='grey')
-    
-    # shelf sides
-    for support_y in support_dims['y']:
-        xc, yc, zc = np.array([support_dims['x'], support_y, support_dims['z']]) - T_NOM
-        x = [xc - support_dims['d'] / 2, xc + support_dims['d'] / 2]
-        y = [yc - support_dims['w'] / 2, yc + support_dims['w'] / 2]
-        z = [zc-support_dims['h']/2, zc + support_dims['h']/2]
-        plot_box(x, y, z, ax, alpha=0.2, col='grey')
-
-    ax.set_box_aspect([1, 1, 1])
-    ax.set_xlim([-0.3, 0.3])
-    ax.set_xlabel("x (m)")
-    ax.set_ylim([-0.3, 0.3])
-    ax.set_ylabel("y (m)")
-    ax.set_zlim([-0.3, 0.3])
-    ax.set_zlabel("z (m)")
-
-print("T0 mean: %s " % ["%.3f" % _x for _x in np.mean(start_poss, axis=0)])
-print("T0 std: %s" % ["%.3f" % _x for _x in np.std(start_poss, axis=0)])
-plt.show()
 
 # %% Offline decoding with variable window size
 raw, events = load_recording(CH_NAMES, FOLDER, f"P{P_ID}_S1_R1.xdf")

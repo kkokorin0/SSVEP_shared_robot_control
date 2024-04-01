@@ -356,6 +356,33 @@ axs[1].legend().remove()
 fig.tight_layout()
 sns.despine()
 
+# %% Failure analysis
+result_df = pd.read_csv(FOLDER + "//trial_results.csv", index_col=None)
+result_df["bounds"] = result_df["collide"] + result_df["near"]
+fig, axs = plt.subplots(1, 1, figsize=(4, 3))
+
+failures_df = pd.melt(
+    result_df, id_vars=["p_id", "mode"], value_vars=["bounds", "long", "wrong_obj"]
+)
+failures_df = failures_df.groupby(["mode", "variable"])["value"].sum().reset_index()
+sns.barplot(
+    data=failures_df,
+    x="variable",
+    y="value",
+    hue="mode",
+    ax=axs,
+    order=["bounds", "long", "wrong_obj"],
+    palette=[sns.color_palette()[7], sns.color_palette()[8]],
+)
+axs.set_ylim([0, 120])
+axs.set_ylabel("Count")
+axs.set_xlabel("Failure type")
+axs.set_xticklabels(["Bounds", "Length", "Object"])
+axs.legend(title="")
+
+sns.despine()
+fig.tight_layout()
+
 # %% Workload
 hf_df = pd.read_csv(FOLDER + "//questionnaire.csv", index_col=None)
 fig, axs = plt.subplots(1, 3, figsize=(6, 3), width_ratios=[3, 2, 1])
