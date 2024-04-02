@@ -30,6 +30,7 @@ P_IDS = [
     "P14",
     "P15",
     "P16",
+    "P17",
 ]
 P_ID_LOW = ["P7", "P9"]
 P_ID_HIGH = list(set(P_IDS) - set(P_ID_LOW))
@@ -47,6 +48,7 @@ F_LAYOUTS = [
     [7, 8, 11, 9, 13],
     [8, 7, 9, 11, 13],
     [9, 11, 8, 13, 7],
+    [13, 11, 8, 9, 7],
 ]
 
 # %% Frequency layouts
@@ -619,7 +621,7 @@ obj_dist = 0.11
 n_pts = 10
 obj_h = 0.06
 obj_r = 0.0225
-finger_r = 0.005
+finger_r = 0.0075
 obj_coords = np.array(
     [
         [[obj_0[0], obj_0[1] - obj_dist * i, obj_0[2] - obj_dist * j] for i in range(3)]
