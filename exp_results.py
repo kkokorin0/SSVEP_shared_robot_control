@@ -31,6 +31,7 @@ P_IDS = [
     "P15",
     "P16",
     "P17",
+    "P18",
 ]
 P_ID_LOW = ["P7", "P9"]
 P_ID_HIGH = list(set(P_IDS) - set(P_ID_LOW))
@@ -49,6 +50,7 @@ F_LAYOUTS = [
     [8, 7, 9, 11, 13],
     [9, 11, 8, 13, 7],
     [13, 11, 8, 9, 7],
+    [8, 7, 9, 13, 11],
 ]
 
 # %% Frequency layouts
