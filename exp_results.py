@@ -1,5 +1,4 @@
 # %% Packages
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -15,7 +14,7 @@ sns.set_palette("colorblind")
 
 # %% Constants
 CMDS = list(CMD_MAP.keys())
-FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\All"
+FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\Processed"
 P_IDS = [
     "P2",
     "P3",
@@ -33,6 +32,8 @@ P_IDS = [
     "P17",
     "P18",
     "P1",
+    "P12",
+    "P4",
 ]
 P_ID_LOW = ["P7", "P9"]
 P_ID_HIGH = list(set(P_IDS) - set(P_ID_LOW))
@@ -53,6 +54,8 @@ F_LAYOUTS = [
     [13, 11, 8, 9, 7],
     [8, 7, 9, 13, 11],
     [8, 7, 13, 11, 9],
+    [11, 9, 13, 8, 7],
+    [8, 9, 7, 13, 11],
 ]
 
 # %% Frequency layouts
@@ -198,7 +201,7 @@ sns.pointplot(
     markers="D",
     palette=[c],
 )
-axs[1].set_ylim([0, 105])
+axs[1].set_ylim([-20, 105])
 axs[1].set_ylabel("$\Delta$ Success rate (%)")
 axs[1].set_xlabel("")
 fig.tight_layout()
@@ -267,7 +270,7 @@ sns.pointplot(
     markers="D",
     palette=[c],
 )
-axs[1].set_ylim([-30, 30])
+axs[1].set_ylim([-20, 0])
 axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
 axs[1].set_xlabel("")
 fig.tight_layout()
