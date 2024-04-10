@@ -3,14 +3,241 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import pearsonr, ttest_rel
+from scipy.stats import pearsonr, sem, t, ttest_rel
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
+from statsmodels.api import qqplot
 
 from session_manager import CMD_MAP, FREQS
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
 sns.set_palette("colorblind")
+
+
+# %% Plotting
+def plot_confusion_matrix(cm, labels, ax, cmap="Blues"):
+    """Confusion matrix heatmap averaged across participants with standard error.
+
+    Args:
+        cm (list of np.array): list of confusion matrices
+        labels (list of str): class labels
+        ax (axes): figure axes
+        cmap (str, optional): colour map. Defaults to "Blues".
+
+    Returns:
+        axes: heatmap
+    """
+    mean_cm = np.mean(cm, axis=0)
+    sterr_cm = np.std(cm, axis=0) / np.sqrt(len(cm))
+    annots = [
+        [
+            "%.1f\n(%.1f)" % (mean_cm[_r, _c], sterr_cm[_r, _c])
+            for _c in range(len(labels))
+        ]
+        for _r in range(len(labels))
+    ]
+    sns.heatmap(
+        mean_cm,
+        annot=annots,
+        fmt="s",
+        cmap=cmap,
+        cbar=False,
+        xticklabels=labels,
+        yticklabels=labels,
+        ax=ax,
+    )
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    return ax
+
+
+def plot_lines(
+    data_pts,
+    data_xs,
+    x,
+    y,
+    ax,
+    hue,
+    order,
+    col,
+    ylabel,
+    ylim,
+    pt_size=3,
+    x_size=5,
+    alpha=0.8,
+    dodge=False,
+):
+    """Plot data points for results across different modes connected by lines using
+    two different styles for best and worst participants.
+
+    Args:
+        data_pts (DataFrame): Results for best participants
+        data_xs (DataFrame): Results for worst participants
+        x (str): x axis
+        y (str): y axis
+        ax (axes): figure axes
+        hue (str): participant id
+        order (list of str): order of conditions
+        col (tuple): colour
+        ylabel (str): y axis label
+        ylim (list of float): y axis limits
+        pt_size (float, optional): point marker size. Defaults to 3.
+        x_size (float, optional): cross marker size . Defaults to 5.
+        alpha (float, optional): opacity. Defaults to 0.8.
+        dodge (bool, optional): dodge points. Defaults to False.
+    """
+    for data, marker, ls, size in zip(
+        [data_pts, data_xs], ["o", "x"], ["-", "--"], [pt_size, x_size]
+    ):
+        sns.pointplot(
+            data=data,
+            x=x,
+            y=y,
+            ax=ax,
+            hue=hue,
+            order=order,
+            palette=[col for _ in order],
+            markers=marker,
+            linestyle=ls,
+            dodge=dodge,
+            markersize=size,
+            alpha=alpha,
+        )
+    ax.set_ylim(ylim)
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel("")
+    ax.legend().remove()
+
+
+def plot_CI(
+    data_pts,
+    data_xs,
+    x,
+    y,
+    ax,
+    hue,
+    order,
+    col,
+    ylabel,
+    ylim,
+    pt_size=3,
+    x_size=5,
+    alpha=0.5,
+    ci=95,
+):
+    """Plot points and confidence interval using two different styles for best and worst participants.
+
+    Args:
+        data_pts (DataFrame): Results for best participants
+        data_xs (DataFrame): Results for worst participants
+        x (str): x axis
+        y (str): y axis
+        ax (axes): figure axes
+        hue (str): participant id
+        order (list of str): order of conditions
+        col (tuple): colour
+        ylabel (str): y axis label
+        ylim (list of float): y axis limits
+        pt_size (float, optional): point marker size. Defaults to 3.
+        x_size (float, optional): cross marker size . Defaults to 5.
+        alpha (float, optional): opacity. Defaults to 0.8.
+        ci (int, optional): size of confidence interval. Defaults to 95.
+    """
+    # mean and confidence interval
+    sns.pointplot(
+        data=pd.concat([data_pts, data_xs]),
+        x=x,
+        y=y,
+        ax=ax,
+        order=order,
+        errorbar=("ci", ci),
+        markers="D",
+        palette=[col for _ in order],
+    )
+    # individual data points
+    plot_lines(
+        data_pts,
+        data_xs,
+        x,
+        y,
+        ax,
+        hue,
+        order,
+        col,
+        ylabel,
+        ylim,
+        pt_size=pt_size,
+        x_size=x_size,
+        alpha=alpha,
+        dodge=True,
+    )
+
+
+def plot_reg(
+    data_pts, data_xs, x, y, ax, col, xlabel, ylabel, xlim, ylim, pt_size=3, x_size=5
+):
+    """Plot linear regression lines of y vs x for best and worst participants.
+
+    Args:
+        data_pts (DataFrame): Results for best participants
+        data_xs (DataFrame): Results for worst participants
+        x (str): x axis
+        y (str): y axis
+        ax (axes): figure axes
+        col (tuple): colour
+        xlabel (str): x axis label
+        ylabel (str): y axis label
+        xlim (list of float): x axis limits
+        ylim (list of float): y axis limits
+        pt_size (float, optional): point marker size. Defaults to 3.
+        x_size (float, optional): cross marker size . Defaults to 5.
+    """
+    cmb_data = pd.concat([data_pts, data_xs])
+    for data, marker, fit, size in zip(
+        [cmb_data, data_pts, data_xs],
+        ["", "o", "x"],
+        [True, False, False],
+        [pt_size, pt_size, x_size],
+    ):
+        sns.regplot(
+            data=data,
+            x=x,
+            y=y,
+            ax=ax,
+            color=col,
+            marker=marker,
+            fit_reg=fit,
+            scatter_kws={"s": size},
+        )
+
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    r, p = pearsonr(cmb_data[x], cmb_data[y])
+    print("-" * 40)
+    print(f"correlation, r:{r:.3f}, p:{p:.3f}")
+
+
+def run_ttest(a, b, ci=0.95, plot_qq=False):
+    """Run a paired two-sided t-test.
+
+    Args:
+        a (array): group A
+        b (array): grpup B
+        ci (float, optional): size of confidence interval. Defaults to 0.95.
+        plot_qq (bool, optional): plot quantile-quantile plot. Defaults to False.
+    """
+    if plot_qq:
+        qqplot(a - b, line="s")
+    ttest = ttest_rel(a, b, alternative="two-sided")
+    ci = ttest.confidence_interval()
+    print("-" * 40)
+    print(
+        f"t:{ttest.statistic:.3f}, p:{ttest.pvalue:.4f}, ci:({ci.low:.3f},{ci.high:.3f})"
+    )
+
 
 # %% Constants
 CMDS = list(CMD_MAP.keys())
@@ -58,87 +285,36 @@ F_LAYOUTS = [
     [8, 9, 7, 13, 11],
 ]
 
-# %% Frequency layouts
-fig, axs = plt.subplots(1, 1, figsize=(3, 3))
-layout_map = np.zeros((len(CMDS), len(CMDS)))
-layout_keys = {_f: _i for _i, _f in enumerate(FREQS)}
-for layout in F_LAYOUTS:
-    for _r in range(len(CMDS)):
-        layout_map[_r, layout_keys[layout[_r]]] += 1
-
-sns.heatmap(
-    layout_map,
-    annot=True,
-    cmap="Greens",
-    cbar=False,
-    xticklabels=FREQS,
-    yticklabels=CMDS,
-    ax=axs,
-)
-axs.set_xlabel("Frequency (Hz)")
-axs.set_ylabel("Direction")
-
 # %% Decoding performance
+fig, axs = plt.subplots(1, 2, figsize=(5.6, 2.8))
+
+# by direction
 accs = []
 cms = []
+all_labels = []
 for p_id in P_IDS:
     data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
     preds = data[data.block == "OBS"].pred
     labels = data[data.block == "OBS"].goal
+    all_labels.append(labels.value_counts())
     accs.append(balanced_accuracy_score(labels, preds) * 100)
     cms.append(confusion_matrix(labels, preds, normalize="true", labels=CMDS) * 100)
 
-# confusion matrix
-fig, axs = plt.subplots(1, 1, figsize=(3, 3))
-mean_cm = np.mean(cms, axis=0)
-sterr_cm = np.std(cms, axis=0) / np.sqrt(len(cms))
-annots = [
-    ["%.1f\n(%.1f)" % (mean_cm[_r, _c], sterr_cm[_r, _c]) for _c in range(len(CMDS))]
-    for _r in range(len(CMDS))
-]
-sns.heatmap(
-    mean_cm,
-    annot=annots,
-    fmt="s",
-    cmap="Blues",
-    cbar=False,
-    xticklabels=CMDS,
-    yticklabels=CMDS,
-    ax=axs,
-)
-axs.set_xlabel("Predicted")
-axs.set_ylabel("True")
+plot_confusion_matrix(cms, CMDS, axs[0], cmap="Blues")
 
-# %% Decoding performance by frequency
+# by frequency
 f_cms = []
 for p_id, p_freqs in zip(P_IDS, F_LAYOUTS):
     data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
     freq_map = {_d: _f for _f, _d in zip(p_freqs, CMD_MAP.keys())}
-
     preds = [freq_map[_p] for _p in data[data.block == "OBS"].pred]
     labels = [freq_map[_l] for _l in data[data.block == "OBS"].goal]
     f_cms.append(confusion_matrix(labels, preds, normalize="true", labels=FREQS) * 100)
 
-# confusion matrix
-fig, axs = plt.subplots(1, 1, figsize=(3, 3))
-mean_cm = np.mean(f_cms, axis=0)
-sterr_cm = np.std(f_cms, axis=0) / np.sqrt(len(f_cms))
-annots = [
-    ["%.1f\n(%.1f)" % (mean_cm[_r, _c], sterr_cm[_r, _c]) for _c in range(len(CMDS))]
-    for _r in range(len(CMDS))
-]
-sns.heatmap(
-    mean_cm,
-    annot=annots,
-    fmt="s",
-    cmap="Purples",
-    cbar=False,
-    xticklabels=FREQS,
-    yticklabels=FREQS,
-    ax=axs,
-)
-axs.set_xlabel("Predicted")
-axs.set_ylabel("True")
+plot_confusion_matrix(f_cms, CMDS, axs[1], cmap="Purples")
+
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//decoding_cms.svg", format="svg")
 
 # %% Success rates
 # load session data
@@ -153,200 +329,175 @@ session_df["p_id"] = np.repeat(P_IDS, 3)
 
 # success rates
 c = sns.color_palette()[0]
-fig, axs = plt.subplots(1, 2, figsize=(4, 3), width_ratios=[2, 1])
-sns.pointplot(
-    data=session_df[session_df.p_id.isin(P_ID_HIGH)],
-    x="block",
-    y="success_rate",
-    ax=axs[0],
-    hue="p_id",
-    order=["DC", "SC"],
-    palette=[c, c],
-    dodge=False,
+fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
+session_best = session_df[session_df.p_id.isin(P_ID_HIGH)]
+session_worst = session_df[session_df.p_id.isin(P_ID_LOW)]
+plot_lines(
+    session_best,
+    session_worst,
+    "block",
+    "success_rate",
+    axs[0],
+    "p_id",
+    ["DC", "SC"],
+    c,
+    "Success rate (%)",
+    [-5, 105],
 )
-sns.pointplot(
-    data=session_df[session_df.p_id.isin(P_ID_LOW)],
-    x="block",
-    y="success_rate",
-    ax=axs[0],
-    hue="p_id",
-    order=["DC", "SC"],
-    palette=[c, c],
-    dodge=False,
-    markers="x",
-    linestyle="--",
+plot_CI(
+    session_best,
+    session_worst,
+    "block",
+    "success_rate",
+    axs[1],
+    "p_id",
+    ["SC-DC"],
+    c,
+    "$\Delta$ Success rate (%)",
+    [-5, 80],
 )
-axs[0].set_ylim([0, 105])
-axs[0].set_ylabel("Success rate (%)")
-axs[0].set_xlabel("")
-axs[0].legend().remove()
+sns.despine()
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//success.svg", format="svg")
 
-# change in success rates
-sns.swarmplot(
-    data=session_df[session_df.p_id.isin(P_ID_HIGH)],
-    x="block",
-    y="success_rate",
-    ax=axs[1],
-    order=["SC-DC"],
-    alpha=0.5,
-    palette=[c],
+run_ttest(
+    session_df[session_df.block == "SC"]["success_rate"].values,
+    session_df[session_df.block == "DC"]["success_rate"].values,
 )
-sns.pointplot(
+
+# %% Success rate bars
+fig, axs = plt.subplots(1, 1, figsize=(1.3, 2.5))
+mean_marker = {
+    "marker": "o",
+    "markerfacecolor": "white",
+    "markeredgecolor": "black",
+    "markersize": "4",
+}
+sns.boxplot(
     data=session_df,
     x="block",
     y="success_rate",
-    ax=axs[1],
-    order=["SC-DC"],
-    errorbar=("ci", 95),
-    markers="D",
-    palette=[c],
+    ax=axs,
+    order=["DC", "SC"],
+    palette=[c, c],
+    showmeans=True,
+    whis=(0, 100),
+    meanprops=mean_marker,
 )
-axs[1].set_ylim([-20, 105])
-axs[1].set_ylabel("$\Delta$ Success rate (%)")
-axs[1].set_xlabel("")
-fig.tight_layout()
-sns.despine()
+axs.set_ylim([-5, 100])
+axs.set_ylabel("Success rate (%)")
+axs.set_xlabel("")
+axs.legend().remove()
 
-# compute t-test results
-test_frate = ttest_rel(
-    session_df[session_df.block == "SC"]["success_rate"],
-    session_df[session_df.block == "DC"]["success_rate"],
-    alternative="two-sided",
-)
-ci = test_frate.confidence_interval()
-print(
-    "t-test (SC-DC), t:%.3f, p: %.4f, ci: (%.3f,%.3f)"
-    % (test_frate.statistic, test_frate.pvalue, ci.low, ci.high)
-)
+sns.despine()
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//success_bars.svg", format="svg")
 
 # %% Trajectory lengths
 # lengths
 c = sns.color_palette()[1]
-fig, axs = plt.subplots(1, 2, figsize=(4, 3), width_ratios=[2, 1])
-sns.pointplot(
-    data=session_df[session_df.p_id.isin(P_ID_HIGH)],
-    x="block",
-    y="len_cm",
-    ax=axs[0],
-    hue="p_id",
-    order=["DC", "SC"],
-    palette=[c, c],
-    dodge=False,
+fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
+plot_lines(
+    session_best,
+    session_worst,
+    "block",
+    "len_cm",
+    axs[0],
+    "p_id",
+    ["DC", "SC"],
+    c,
+    "Trajectory length (cm)",
+    [28, 73],
 )
-low_len_df = session_df[session_df.p_id.isin(P_ID_LOW)].copy()
-sns.pointplot(
-    data=low_len_df,
-    x="block",
-    y="len_cm",
-    ax=axs[0],
-    hue="p_id",
-    order=["DC", "SC"],
-    palette=[c, c],
-    dodge=False,
-    markers="x",
+plot_CI(
+    session_best,
+    session_worst,
+    "block",
+    "len_cm",
+    axs[1],
+    "p_id",
+    ["SC-DC"],
+    c,
+    "$\Delta$ Trajectory length (cm)",
+    [-20, 0],
 )
-axs[0].set_ylim([20, 80])
-axs[0].set_ylabel("Trajectory length (cm)")
-axs[0].set_xlabel("")
-axs[0].legend().remove()
-
-# change in lengths
-sns.swarmplot(
-    data=session_df,
-    x="block",
-    y="len_cm",
-    ax=axs[1],
-    order=["SC-DC"],
-    alpha=0.5,
-    palette=[c],
-)
-sns.pointplot(
-    data=session_df,
-    x="block",
-    y="len_cm",
-    ax=axs[1],
-    order=["SC-DC"],
-    errorbar=("ci", 95),
-    markers="D",
-    palette=[c],
-)
-axs[1].set_ylim([-20, 0])
-axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
-axs[1].set_xlabel("")
-fig.tight_layout()
+axs[1].set_yticks(range(-20, 1, 5))
 sns.despine()
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//lengths.svg", format="svg")
 
-# compute t-test results
-valid_lens = session_df[session_df.p_id.isin(P_ID_HIGH)].copy()
-test_length = ttest_rel(
-    valid_lens[valid_lens.block == "SC"]["len_cm"],
-    valid_lens[valid_lens.block == "DC"]["len_cm"],
-    alternative="two-sided",
-)
-ci = test_length.confidence_interval()
-print(
-    "t-test (SC-DC), t:%.3f, p: %.4f, ci: (%.3f,%.3f)"
-    % (test_length.statistic, test_length.pvalue, ci.low, ci.high)
+run_ttest(
+    session_best[session_best.block == "SC"]["len_cm"].values,
+    session_best[session_best.block == "DC"]["len_cm"].values,
 )
 
-# %% Decoding accuracy vs impact of shared control
-fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharex=True)
+# %% Impact of decoding accuracy
+fig, axs = plt.subplots(1, 3, figsize=(5, 2), sharex=True)
+
+# success rate
+acc_vs_dc_df = pd.merge(
+    session_df[session_df.block == "DC"], pd.DataFrame({"p_id": P_IDS, "acc": accs})
+)
+acc_vs_dc_df_best = acc_vs_dc_df[acc_vs_dc_df.p_id.isin(P_ID_HIGH)]
+acc_vs_dc_df_worst = acc_vs_dc_df[acc_vs_dc_df.p_id.isin(P_ID_LOW)]
+plot_reg(
+    acc_vs_dc_df_best,
+    acc_vs_dc_df_worst,
+    "acc",
+    "success_rate",
+    axs[0],
+    sns.color_palette()[0],
+    "Accuracy (%)",
+    "DC success rate (%)",
+    [25, 100],
+    [-5, 100],
+    pt_size=5,
+    x_size=10,
+)
+
+# change in success rate
 acc_vs_sc_df = pd.merge(
     session_df[session_df.block == "SC-DC"], pd.DataFrame({"p_id": P_IDS, "acc": accs})
 )
+acc_vs_sc_df_best = acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_HIGH)]
+acc_vs_sc_df_worst = acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_LOW)]
+plot_reg(
+    acc_vs_sc_df_best,
+    acc_vs_sc_df_worst,
+    "acc",
+    "success_rate",
+    axs[1],
+    sns.color_palette()[0],
+    "Accuracy (%)",
+    "$\Delta$ Success rate (%)",
+    [25, 100],
+    [-20, 80],
+    pt_size=5,
+    x_size=10,
+)
 
-# acc vs delta success rate
+# change in trajectory length
 sns.regplot(
     data=acc_vs_sc_df,
     x="acc",
-    y="success_rate",
-    ax=axs[0],
-    color=sns.color_palette()[0],
-    marker="",
+    y="len_cm",
+    ax=axs[2],
+    color=sns.color_palette()[1],
+    scatter_kws={"s": 5},
 )
-sns.regplot(
-    data=acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_HIGH)],
-    x="acc",
-    y="success_rate",
-    ax=axs[0],
-    color=sns.color_palette()[0],
-    marker="o",
-    fit_reg=False,
-)
-sns.regplot(
-    data=acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_LOW)],
-    x="acc",
-    y="success_rate",
-    ax=axs[0],
-    color=sns.color_palette()[0],
-    marker="x",
-    fit_reg=False,
-)
-
-axs[0].set_ylim([-100, 100])
-axs[0].set_xlim([0, 100])
-axs[0].set_xlabel("Accuracy (%)")
-axs[0].set_ylabel("$\Delta$ Success rate (%)")
-r, p = pearsonr(acc_vs_sc_df.acc, acc_vs_sc_df.success_rate)
-print("dSR vs acc correlation, r:%.3f, p: %.3f" % (r, p))
-
-# acc vs delta trajectory length
-sns.regplot(
-    data=acc_vs_sc_df, x="acc", y="len_cm", ax=axs[1], color=sns.color_palette()[1]
-)
-axs[1].set_ylim([-50, 50])
-axs[1].set_xlabel("Accuracy (%)")
-axs[1].set_ylabel("$\Delta$ Trajectory length (cm)")
-valid_rel_lens = acc_vs_sc_df.dropna(subset=["len_cm"])
-r, p = pearsonr(valid_rel_lens.acc, valid_rel_lens.len_cm)
-print("dL vs acc correlation, r:%.3f, p: %.3f" % (r, p))
+axs[2].set_ylim([-25, 0])
+axs[2].set_xlabel("Accuracy (%)")
+axs[2].set_ylabel("$\Delta$ Trajectory length (cm)")
+r, p = pearsonr(acc_vs_sc_df_best.acc, acc_vs_sc_df_best.len_cm)
+print("correlation, r:%.3f, p: %.3f" % (r, p))
 
 fig.tight_layout()
 sns.despine()
+# plt.savefig(FOLDER + "//Figures//corrs.svg", format="svg")
 
 # %% Offline decoding recall with variable window sizes
 window_df = pd.read_csv(FOLDER + "//variable_window.csv", index_col=None)
-fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharey=True)
+fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharey=True)
 for p_id, ax in zip(window_df["p_id"].unique(), axs):
     data = window_df[window_df.p_id == p_id].copy()
     sns.pointplot(data=data, ax=ax, x="window_s", y="recall", hue="freq", join=True)
@@ -354,17 +505,19 @@ for p_id, ax in zip(window_df["p_id"].unique(), axs):
 
     r, p = pearsonr(data.window_s, data.recall)
     print(f"P{p_id} recall vs window size correlation, r:{r:.3f}, p: {p:.3f}")
-    ax.set_title(f"P{p_id}")
+    # ax.set_title(f"P{p_id}")
     ax.set_xlabel("Window size (s)")
     ax.set_ylim([0, 105])
     ax.axhline(20, linestyle="--", color="k", alpha=0.25)
 
 axs[0].set_ylabel("Recall (%)")
-axs[0].legend(title="", ncol=3, loc="upper center")
+axs[0].legend().remove()
+axs[1].legend(title="", ncol=1, loc="upper left", bbox_to_anchor=(1, 1))
 axs[1].set_ylabel("")
-axs[1].legend().remove()
 fig.tight_layout()
 sns.despine()
+
+# plt.savefig(FOLDER + "//Figures//P7_P9_window.svg", format="svg")
 
 # %% Failure analysis
 result_df = pd.read_csv(FOLDER + "//trial_results.csv", index_col=None)
@@ -395,7 +548,7 @@ fig.tight_layout()
 
 # %% Workload
 hf_df = pd.read_csv(FOLDER + "//questionnaire.csv", index_col=None)
-fig, axs = plt.subplots(1, 3, figsize=(6, 3), width_ratios=[3, 2, 1])
+fig, axs = plt.subplots(1, 1, figsize=(2, 2))
 
 # factor tally
 factors = ["Mental", "Physical", "Temporal", "Performance", "Effort", "Frustration"]
@@ -404,17 +557,18 @@ sns.barplot(
     data=hf_df.melt(id_vars=["ID"], value_vars=factors),
     x="variable",
     y="value",
-    ax=axs[0],
+    ax=axs,
     errorbar="se",
     order=factors,
     color=sns.color_palette()[3],
 )
-axs[0].set_ylabel("Weight")
-axs[0].set_ylim([0, 5])
-axs[0].set_xticklabels(factor_labels)
-axs[0].set_xlabel("Factor")
+axs.set_ylabel("Weight")
+axs.set_ylim([0, 5])
+axs.set_xticklabels(factor_labels)
+axs.set_xlabel("Factor")
 
 # workload
+fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
 wl_df = hf_df.melt(id_vars=["ID"], value_vars=["DC Total", "SC Total"]).copy()
 wl_df["mode"] = wl_df["variable"].apply(lambda x: x.split(" ")[0])
 c = sns.color_palette()[4]
@@ -423,49 +577,69 @@ sns.pointplot(
     x="mode",
     y="value",
     hue="ID",
-    ax=axs[1],
+    ax=axs[0],
     order=["DC", "SC"],
     palette=[c, c],
     dodge=False,
+    markersize=3,
+    alpha=0.8,
 )
 sns.pointplot(
     data=wl_df[wl_df.ID.isin(P_ID_LOW)],
     x="mode",
     y="value",
     hue="ID",
-    ax=axs[1],
+    ax=axs[0],
     order=["DC", "SC"],
     palette=[c, c],
     dodge=False,
     markers="x",
     linestyles="--",
+    alpha=0.8,
 )
-axs[1].set_ylim([0, 105])
-axs[1].set_ylabel("Workload")
-axs[1].set_xlabel("Mode")
-axs[1].legend().remove()
+axs[0].set_ylim([0, 105])
+axs[0].set_ylabel("Workload")
+axs[0].set_xlabel("")
+axs[0].legend().remove()
 
 # change in workload
 hf_df["dWL"] = hf_df["SC Total"] - hf_df["DC Total"]
-sns.swarmplot(
-    y=hf_df["SC Total"] - hf_df["DC Total"],
-    ax=axs[2],
-    alpha=0.75,
+sns.pointplot(
+    data=hf_df[hf_df.ID.isin(P_ID_HIGH)],
+    y="dWL",
+    ax=axs[1],
+    alpha=0.5,
     palette=[c],
+    hue="ID",
+    markersize=3,
+    dodge=True,
 )
 sns.pointplot(
-    y=hf_df["SC Total"] - hf_df["DC Total"],
-    ax=axs[2],
+    data=hf_df[hf_df.ID.isin(P_ID_LOW)],
+    y="dWL",
+    ax=axs[1],
+    alpha=0.5,
+    palette=[c],
+    hue="ID",
+    marker="x",
+    dodge=True,
+)
+sns.pointplot(
+    data=hf_df,
+    y="dWL",
+    ax=axs[1],
     errorbar=("ci", 95),
-    markers="o",
+    markers="D",
     palette=[c],
 )
-axs[2].set_ylim([-30, 30])
-axs[2].set_ylabel("$\Delta$ Workload")
-axs[2].set_xticklabels(["SC-DC"])
-axs[2].set_xlabel("Mode")
-fig.tight_layout()
+axs[1].legend().remove()
+axs[1].set_ylim([-30, 30])
+axs[1].set_ylabel("$\Delta$ Workload")
+axs[1].set_xticklabels(["SC-DC"])
+axs[1].set_xlabel("")
 sns.despine()
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//workload.svg", format="svg")
 
 test_wl = ttest_rel(
     hf_df["SC Total"],
@@ -477,6 +651,7 @@ print(
     "t-test (SC-DC), t:%.3f, p: %.3f, ci: (%.3f,%.3f)"
     % (test_wl.statistic, test_wl.pvalue, ci.low, ci.high)
 )
+# qqplot(hf_df["SC Total"].values - hf_df["DC Total"].values, line="s")
 
 # %% Embodiment
 fig, axs = plt.subplots(1, 1, figsize=(4, 4))
@@ -614,11 +789,11 @@ fig.tight_layout()
 
 # %% Plot reaching trajectories
 # %matplotlib qt
+plt.close("all")
 participant = 5
-objs = ["0", "7"]
-mode = "SC"
+objs = ["7"]
 blocks = [3, 5, 6, 7]
-fig = plt.figure(figsize=(8, 6))
+fig = plt.figure(figsize=(5, 5))
 ax = plt.axes(projection="3d")
 
 # layout
@@ -628,7 +803,7 @@ obj_dist = 0.11
 n_pts = 10
 obj_h = 0.06
 obj_r = 0.0225
-finger_r = 0.0075
+finger_r = 0  # 0.0075
 obj_coords = np.array(
     [
         [[obj_0[0], obj_0[1] - obj_dist * i, obj_0[2] - obj_dist * j] for i in range(3)]
@@ -639,47 +814,56 @@ obj_coords = np.array(
 # load data
 results = "P%d_results_tstep.csv" % participant
 online_df = pd.read_csv(FOLDER + "//" + results, index_col=0)
-reach_df = online_df[
-    online_df.block_i.isin(blocks)
-    & online_df.goal.isin(objs)
-    & (online_df.block == mode)
-].copy()
+reach_df = online_df[online_df.block_i.isin(blocks) & online_df.goal.isin(objs)].copy()
 reach_df["label"] = reach_df.block_i.map(str) + " " + reach_df.trial.map(str)
 
 # objects
 for obj_i, coords in enumerate(obj_coords):
-    if str(obj_i) in online_df.goal.unique():
-        xc, yc, zc = coords - origin
-        z = np.linspace(0, obj_h + 2 * finger_r, n_pts) - obj_h / 2 - finger_r + zc
-        theta = np.linspace(0, 2 * np.pi, n_pts)
-        theta_grid, z_grid = np.meshgrid(theta, z)
-        x_grid = (obj_r + finger_r) * np.cos(theta_grid) + xc
-        y_grid = (obj_r + finger_r) * np.sin(theta_grid) + yc
-        ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.3, color="grey")
+    xc, yc, zc = coords - origin
+    z = np.linspace(0, obj_h + 2 * finger_r, n_pts) - obj_h / 2 - finger_r + zc
+    theta = np.linspace(0, 2 * np.pi, n_pts)
+    theta_grid, z_grid = np.meshgrid(theta, z)
+    x_grid = (obj_r + finger_r) * np.cos(theta_grid) + xc
+    y_grid = (obj_r + finger_r) * np.sin(theta_grid) + yc
+    alpha = 0.5 if str(obj_i) in online_df.goal.unique() else 0.1
+    ax.plot_surface(x_grid, y_grid, z_grid, alpha=alpha, color="grey")
 
 start_pos = []
 for label in reach_df.label.unique():
     trial = reach_df[reach_df.label == label]
     start_pos.append(np.array(trial[["x", "y", "z"]].values[0]) - origin)
-    col = sns.color_palette()[1 - trial.success.max()]
+    if trial.block.max() == "SC":
+        col = sns.color_palette()[0] if trial.success.max() else sns.color_palette()[1]
+        ls = "-"
+    else:
+        col = sns.color_palette()[2] if trial.success.max() else sns.color_palette()[3]
+        ls = "-"
 
     # trajectories
     traj = np.array(trial[["x", "y", "z"]]) - origin
-    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], c=col, alpha=0.7)
+    ax.plot(
+        traj[:, 0],
+        traj[:, 1],
+        traj[:, 2],
+        c=col,
+        alpha=0.75,
+        linestyle=ls,
+        linewidth=2.5,
+    )
 
 # plot starting point
 start_pos = np.array(start_pos).mean(axis=0)
 ax.plot(start_pos[0], start_pos[1], start_pos[2], "o", c="k", markersize=5)
 
 ax.set_box_aspect([1, 1, 1])
-ax.set_xlim([-0.1, 0.3])
-ax.set_xticks([-0.1, 0, 0.1, 0.2, 0.3])
+ax.set_xlim([-0.05, 0.25])
+ax.set_xticks([0, 0.1, 0.2])
 ax.set_xlabel("x (m)")
-ax.set_ylim([-0.2, 0.2])
-ax.set_yticks([-0.2, -0.1, 0, 0.1, 0.2])
+ax.set_ylim([-0.15, 0.15])
+ax.set_yticks([-0.1, 0, 0.1])
 ax.set_ylabel("y (m)")
-ax.set_zlim([-0.2, 0.2])
-ax.set_zticks([-0.2, -0.1, 0, 0.1, 0.2])
+ax.set_zlim([-0.15, 0.15])
+ax.set_zticks([-0.1, 0, 0.1])
 ax.set_zlabel("z (m)")
 
 plt.show()
