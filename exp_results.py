@@ -14,7 +14,7 @@ sns.set_context("paper")
 sns.set_palette("colorblind")
 
 
-# %% Plotting
+# %% Functions
 def plot_confusion_matrix(cm, labels, ax, cmap="Blues"):
     """Confusion matrix heatmap averaged across participants with standard error.
 
@@ -239,6 +239,33 @@ def run_ttest(a, b, ci=0.95, plot_qq=False):
     )
 
 
+def get_sample_CI(a, ci=0.95):
+    """Compute sample confidence interval.
+
+    Args:
+        a (np.array): scores
+        ci (float, optional): size of confidence interval. Defaults to 0.95.
+
+    Returns:
+        _type_: _description_
+    """
+    return t.interval(ci, len(a) - 1, loc=np.mean(a), scale=sem(a))
+
+
+def get_ITR(p, n, t):
+    """Calculate information transfer rate in bits/min.
+
+    Args:
+        p (float): accuracy
+        n (int): number of selections
+        t (float): time per selection in minutes
+
+    Returns:
+        float: ITR in bits/min
+    """
+    return (np.log2(n) + p * np.log2(p) + (1 - p) * np.log2((1 - p) / (n - 1))) / t
+
+
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\Processed"
@@ -328,7 +355,7 @@ session_df = pd.concat(sessions).reset_index(drop=True)
 session_df["p_id"] = np.repeat(P_IDS, 3)
 
 # success rates
-c = sns.color_palette()[0]
+c = sns.color_palette()[2]
 fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
 session_best = session_df[session_df.p_id.isin(P_ID_HIGH)]
 session_worst = session_df[session_df.p_id.isin(P_ID_LOW)]
@@ -432,12 +459,11 @@ run_ttest(
 )
 
 # %% Impact of decoding accuracy
-fig, axs = plt.subplots(1, 3, figsize=(5, 2), sharex=True)
+fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharex=True)
+acc_df = pd.DataFrame({"p_id": P_IDS, "acc": accs, "mode": [""] * len(P_IDS)})
 
 # success rate
-acc_vs_dc_df = pd.merge(
-    session_df[session_df.block == "DC"], pd.DataFrame({"p_id": P_IDS, "acc": accs})
-)
+acc_vs_dc_df = pd.merge(session_df[session_df.block == "DC"], acc_df)
 acc_vs_dc_df_best = acc_vs_dc_df[acc_vs_dc_df.p_id.isin(P_ID_HIGH)]
 acc_vs_dc_df_worst = acc_vs_dc_df[acc_vs_dc_df.p_id.isin(P_ID_LOW)]
 plot_reg(
@@ -451,14 +477,13 @@ plot_reg(
     "DC success rate (%)",
     [25, 100],
     [-5, 100],
-    pt_size=5,
-    x_size=10,
+    pt_size=10,
+    x_size=30,
 )
 
 # change in success rate
-acc_vs_sc_df = pd.merge(
-    session_df[session_df.block == "SC-DC"], pd.DataFrame({"p_id": P_IDS, "acc": accs})
-)
+acc_vs_sc_df = pd.merge(session_df[session_df.block == "SC-DC"], acc_df)
+
 acc_vs_sc_df_best = acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_HIGH)]
 acc_vs_sc_df_worst = acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_LOW)]
 plot_reg(
@@ -472,24 +497,24 @@ plot_reg(
     "$\Delta$ Success rate (%)",
     [25, 100],
     [-20, 80],
-    pt_size=5,
-    x_size=10,
+    pt_size=10,
+    x_size=30,
 )
 
 # change in trajectory length
-sns.regplot(
-    data=acc_vs_sc_df,
-    x="acc",
-    y="len_cm",
-    ax=axs[2],
-    color=sns.color_palette()[1],
-    scatter_kws={"s": 5},
-)
-axs[2].set_ylim([-25, 0])
-axs[2].set_xlabel("Accuracy (%)")
-axs[2].set_ylabel("$\Delta$ Trajectory length (cm)")
-r, p = pearsonr(acc_vs_sc_df_best.acc, acc_vs_sc_df_best.len_cm)
-print("correlation, r:%.3f, p: %.3f" % (r, p))
+# sns.regplot(
+#     data=acc_vs_sc_df,
+#     x="acc",
+#     y="len_cm",
+#     ax=axs[2],
+#     color=sns.color_palette()[1],
+#     scatter_kws={"s": 5},
+# )
+# axs[2].set_ylim([-25, 0])
+# axs[2].set_xlabel("Accuracy (%)")
+# axs[2].set_ylabel("$\Delta$ Trajectory length (cm)")
+# r, p = pearsonr(acc_vs_sc_df_best.acc, acc_vs_sc_df_best.len_cm)
+# print("correlation, r:%.3f, p: %.3f" % (r, p))
 
 fig.tight_layout()
 sns.despine()
@@ -500,7 +525,16 @@ window_df = pd.read_csv(FOLDER + "//variable_window.csv", index_col=None)
 fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharey=True)
 for p_id, ax in zip(window_df["p_id"].unique(), axs):
     data = window_df[window_df.p_id == p_id].copy()
-    sns.pointplot(data=data, ax=ax, x="window_s", y="recall", hue="freq", join=True)
+    sns.pointplot(
+        data=data,
+        ax=ax,
+        x="window_s",
+        y="recall",
+        hue="freq",
+        join=True,
+        markersize=3,
+        # markers="x",
+    )
     # sns.regplot(data=data, ax=ax, x="window_s", y="recall", marker='')
 
     r, p = pearsonr(data.window_s, data.recall)
@@ -514,16 +548,48 @@ axs[0].set_ylabel("Recall (%)")
 axs[0].legend().remove()
 axs[1].legend(title="", ncol=1, loc="upper left", bbox_to_anchor=(1, 1))
 axs[1].set_ylabel("")
+
 fig.tight_layout()
 sns.despine()
-
 # plt.savefig(FOLDER + "//Figures//P7_P9_window.svg", format="svg")
 
-# %% Failure analysis
+# %% Summary of decoding performance and failure analysis
+fig, axs = plt.subplots(1, 3, figsize=(5, 2), width_ratios=[1, 1, 2.5])
 result_df = pd.read_csv(FOLDER + "//trial_results.csv", index_col=None)
 result_df["bounds"] = result_df["collide"] + result_df["near"]
-fig, axs = plt.subplots(1, 1, figsize=(4, 3))
 
+# decoding accuracy
+plot_CI(
+    acc_df[acc_df.p_id.isin(P_ID_HIGH)],
+    acc_df[acc_df.p_id.isin(P_ID_LOW)],
+    "mode",
+    "acc",
+    axs[0],
+    "p_id",
+    [""],
+    sns.color_palette()[0],
+    "Accuracy (%)",
+    [30, 100],
+)
+print("ci:", get_sample_CI(acc_df["acc"].values))
+
+# information transfer rate
+acc_df["ITR"] = get_ITR(acc_df["acc"] / 100, 5, 1 / 60)
+plot_CI(
+    acc_df[acc_df.p_id.isin(P_ID_HIGH)],
+    acc_df[acc_df.p_id.isin(P_ID_LOW)],
+    "mode",
+    "ITR",
+    axs[1],
+    "p_id",
+    [""],
+    sns.color_palette()[3],
+    "ITR (bits/min)",
+    [0, 125],
+)
+print("ci:", get_sample_CI(acc_df["ITR"].values))
+
+# failures
 failures_df = pd.melt(
     result_df, id_vars=["p_id", "mode"], value_vars=["bounds", "long", "wrong_obj"]
 )
@@ -533,18 +599,19 @@ sns.barplot(
     x="variable",
     y="value",
     hue="mode",
-    ax=axs,
+    ax=axs[2],
     order=["bounds", "long", "wrong_obj"],
     palette=[sns.color_palette()[7], sns.color_palette()[8]],
 )
-axs.set_ylim([0, 120])
-axs.set_ylabel("Count")
-axs.set_xlabel("Failure type")
-axs.set_xticklabels(["Bounds", "Length", "Object"])
-axs.legend(title="")
+axs[2].set_ylim([0, 150])
+axs[2].set_ylabel("Count")
+axs[2].set_xlabel("")
+axs[2].set_xticklabels(["Bounds", "Length", "Object"])
+axs[2].legend(title="")
 
 sns.despine()
 fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//acc_itr_fail.svg", format="svg")
 
 # %% Workload
 hf_df = pd.read_csv(FOLDER + "//questionnaire.csv", index_col=None)
@@ -571,87 +638,40 @@ axs.set_xlabel("Factor")
 fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
 wl_df = hf_df.melt(id_vars=["ID"], value_vars=["DC Total", "SC Total"]).copy()
 wl_df["mode"] = wl_df["variable"].apply(lambda x: x.split(" ")[0])
-c = sns.color_palette()[4]
-sns.pointplot(
-    data=wl_df[wl_df.ID.isin(P_ID_HIGH)],
-    x="mode",
-    y="value",
-    hue="ID",
-    ax=axs[0],
-    order=["DC", "SC"],
-    palette=[c, c],
-    dodge=False,
-    markersize=3,
-    alpha=0.8,
-)
-sns.pointplot(
-    data=wl_df[wl_df.ID.isin(P_ID_LOW)],
-    x="mode",
-    y="value",
-    hue="ID",
-    ax=axs[0],
-    order=["DC", "SC"],
-    palette=[c, c],
-    dodge=False,
-    markers="x",
-    linestyles="--",
-    alpha=0.8,
-)
-axs[0].set_ylim([0, 105])
-axs[0].set_ylabel("Workload")
-axs[0].set_xlabel("")
-axs[0].legend().remove()
-
-# change in workload
 hf_df["dWL"] = hf_df["SC Total"] - hf_df["DC Total"]
-sns.pointplot(
-    data=hf_df[hf_df.ID.isin(P_ID_HIGH)],
-    y="dWL",
-    ax=axs[1],
-    alpha=0.5,
-    palette=[c],
-    hue="ID",
-    markersize=3,
-    dodge=True,
+hf_df["mode"] = "SC-DC"
+c = sns.color_palette()[4]
+
+plot_lines(
+    wl_df[wl_df.ID.isin(P_ID_HIGH)],
+    wl_df[wl_df.ID.isin(P_ID_LOW)],
+    "mode",
+    "value",
+    axs[0],
+    "ID",
+    ["DC", "SC"],
+    c,
+    "Workload",
+    [-5, 105],
 )
-sns.pointplot(
-    data=hf_df[hf_df.ID.isin(P_ID_LOW)],
-    y="dWL",
-    ax=axs[1],
-    alpha=0.5,
-    palette=[c],
-    hue="ID",
-    marker="x",
-    dodge=True,
+plot_CI(
+    hf_df[hf_df.ID.isin(P_ID_HIGH)],
+    hf_df[hf_df.ID.isin(P_ID_LOW)],
+    "mode",
+    "dWL",
+    axs[1],
+    "ID",
+    ["SC-DC"],
+    c,
+    "Workload",
+    [-30, 30],
 )
-sns.pointplot(
-    data=hf_df,
-    y="dWL",
-    ax=axs[1],
-    errorbar=("ci", 95),
-    markers="D",
-    palette=[c],
-)
-axs[1].legend().remove()
-axs[1].set_ylim([-30, 30])
-axs[1].set_ylabel("$\Delta$ Workload")
-axs[1].set_xticklabels(["SC-DC"])
-axs[1].set_xlabel("")
+
 sns.despine()
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//workload.svg", format="svg")
 
-test_wl = ttest_rel(
-    hf_df["SC Total"],
-    hf_df["DC Total"],
-    alternative="two-sided",
-)
-ci = test_wl.confidence_interval()
-print(
-    "t-test (SC-DC), t:%.3f, p: %.3f, ci: (%.3f,%.3f)"
-    % (test_wl.statistic, test_wl.pvalue, ci.low, ci.high)
-)
-# qqplot(hf_df["SC Total"].values - hf_df["DC Total"].values, line="s")
+run_ttest(hf_df["SC Total"].values, hf_df["DC Total"].values)
 
 # %% Embodiment
 fig, axs = plt.subplots(1, 1, figsize=(4, 4))
@@ -705,90 +725,15 @@ axs.set_ylabel("")
 sns.despine()
 fig.tight_layout()
 
-# %% Decoding accuracy vs questionnaire
+# %% Experience and fatigue
 fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharey=True)
-acc_vs_q_df = pd.merge(hf_df, pd.DataFrame({"ID": P_IDS, "acc": accs}))
-
-# acc vs fatigue
-fatigue_id = {"Very low": 1, "Low": 2, "Medium": 3, "High": 4, "Very high": 5}
-acc_vs_q_df["Fatigue_id"] = acc_vs_q_df["Fatigue"].apply(lambda x: fatigue_id[x])
-sns.regplot(
-    data=acc_vs_q_df,
-    x="Fatigue_id",
-    y="acc",
-    ax=axs[0],
-    color=sns.color_palette()[7],
-    marker="",
-)
-sns.regplot(
-    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_HIGH)],
-    x="Fatigue_id",
-    y="acc",
-    ax=axs[0],
-    color=sns.color_palette()[7],
-    marker="o",
-    fit_reg=False,
-)
-sns.regplot(
-    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_LOW)],
-    x="Fatigue_id",
-    y="acc",
-    ax=axs[0],
-    color=sns.color_palette()[7],
-    marker="x",
-    fit_reg=False,
-)
-
-axs[0].set_ylim([0, 100])
-axs[0].set_xlim([1, 5])
-axs[0].set_xticklabels(fatigue_id.keys())
-axs[0].set_xlabel("Fatigue")
-axs[0].set_ylabel("Accuracy (%)")
-r, p = pearsonr(acc_vs_q_df.acc, acc_vs_q_df.Fatigue_id)
-print("fatigue vs acc correlation, r:%.3f, p: %.3f" % (r, p))
-
-# acc vs BCI experience
-BCI_exp_id = {"0h": 1, "<1h": 2, "<2h": 3, "<4h": 4, "<10h": 5, ">10h": 6}
-acc_vs_q_df["BCI_exp_id"] = acc_vs_q_df["BCI use"].apply(lambda x: BCI_exp_id[x])
-sns.regplot(
-    data=acc_vs_q_df,
-    x="BCI_exp_id",
-    y="acc",
-    ax=axs[1],
-    color=sns.color_palette()[8],
-    marker="",
-)
-sns.regplot(
-    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_HIGH)],
-    x="BCI_exp_id",
-    y="acc",
-    ax=axs[1],
-    color=sns.color_palette()[8],
-    marker="o",
-    fit_reg=False,
-)
-sns.regplot(
-    data=acc_vs_q_df[acc_vs_q_df.ID.isin(P_ID_LOW)],
-    x="BCI_exp_id",
-    y="acc",
-    ax=axs[1],
-    color=sns.color_palette()[8],
-    marker="x",
-    fit_reg=False,
-)
-
-axs[1].set_xlim([1, 6])
-axs[1].set_xticklabels(BCI_exp_id.keys())
-axs[1].set_xlabel("BCI experience (h)")
-axs[1].set_ylabel("")
-r, p = pearsonr(acc_vs_q_df.acc, acc_vs_q_df.BCI_exp_id)
-print("BCI experience vs acc correlation, r:%.3f, p: %.3f" % (r, p))
-
+sns.countplot(data=hf_df, x="BCI use", ax=axs[0], order=['0h', '<1h', '<2h', '<4h', '>10h'])
+sns.countplot(data=hf_df, x="Fatigue", ax=axs[1], order=['Very low', 'Low', 'Medium', 'High', 'Very high'])
 sns.despine()
 fig.tight_layout()
 
 # %% Plot reaching trajectories
-# %matplotlib qt
+%matplotlib qt
 plt.close("all")
 participant = 5
 objs = ["7"]
@@ -855,6 +800,10 @@ for label in reach_df.label.unique():
 start_pos = np.array(start_pos).mean(axis=0)
 ax.plot(start_pos[0], start_pos[1], start_pos[2], "o", c="k", markersize=5)
 
+# axes formatting
+ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
 ax.set_box_aspect([1, 1, 1])
 ax.set_xlim([-0.05, 0.25])
 ax.set_xticks([0, 0.1, 0.2])
