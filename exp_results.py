@@ -535,7 +535,6 @@ for p_id, ax in zip(window_df["p_id"].unique(), axs):
         markersize=3,
         # markers="x",
     )
-    # sns.regplot(data=data, ax=ax, x="window_s", y="recall", marker='')
 
     r, p = pearsonr(data.window_s, data.recall)
     print(f"P{p_id} recall vs window size correlation, r:{r:.3f}, p: {p:.3f}")
@@ -663,7 +662,7 @@ plot_CI(
     "ID",
     ["SC-DC"],
     c,
-    "Workload",
+    "$\Delta$ Workload",
     [-30, 30],
 )
 
