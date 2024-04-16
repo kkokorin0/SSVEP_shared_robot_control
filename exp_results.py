@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from scipy.stats import pearsonr, sem, t, ttest_rel
-from sklearn.metrics import balanced_accuracy_score, confusion_matrix
+from sklearn.metrics import balanced_accuracy_score, confusion_matrix, recall_score
 from statsmodels.api import qqplot
 
 from session_manager import CMD_MAP, FREQS
@@ -27,15 +27,18 @@ def plot_confusion_matrix(cm, labels, ax, cmap="Blues"):
     Returns:
         axes: heatmap
     """
-    mean_cm = np.mean(cm, axis=0)
-    sterr_cm = np.std(cm, axis=0) / np.sqrt(len(cm))
-    annots = [
-        [
-            "%.1f\n(%.1f)" % (mean_cm[_r, _c], sterr_cm[_r, _c])
-            for _c in range(len(labels))
+    mean_cm = np.nanmean(cm, axis=0)
+    if len(cm) == 1:
+        annots = np.round(mean_cm, 1).astype(str)
+    else:
+        sterr_cm = np.std(cm, axis=0) / np.sqrt(len(cm))
+        annots = [
+            [
+                "%.1f\n(%.1f)" % (mean_cm[_r, _c], sterr_cm[_r, _c])
+                for _c in range(len(labels))
+            ]
+            for _r in range(len(labels))
         ]
-        for _r in range(len(labels))
-    ]
     sns.heatmap(
         mean_cm,
         annot=annots,
@@ -45,6 +48,9 @@ def plot_confusion_matrix(cm, labels, ax, cmap="Blues"):
         xticklabels=labels,
         yticklabels=labels,
         ax=ax,
+        linewidths=0.5,
+        vmax=100,
+        vmin=0,
     )
     ax.set_xlabel("Predicted")
     ax.set_ylabel("True")
@@ -338,10 +344,32 @@ for p_id, p_freqs in zip(P_IDS, F_LAYOUTS):
     labels = [freq_map[_l] for _l in data[data.block == "OBS"].goal]
     f_cms.append(confusion_matrix(labels, preds, normalize="true", labels=FREQS) * 100)
 
-plot_confusion_matrix(f_cms, CMDS, axs[1], cmap="Purples")
+plot_confusion_matrix(f_cms, FREQS, axs[1], cmap="Purples")
 
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//decoding_cms.svg", format="svg")
+
+# %% Prediction accuracy by time step in SC trials
+fig, axs = plt.subplots(1, 1, figsize=(4, 4))
+blocks = [3, 5, 6, 7]
+obj_labels = ["TL", "TM", "TR", "ML", "M", "MR", "BL", "BM", "BR"]
+objs = np.arange(9)
+
+obj_recall = []
+preds = []
+labels = []
+for p_id in P_IDS:
+    data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
+    sc_data = data[data.block_i.isin(blocks) & (data.block == "SC")]
+    preds += list(sc_data.pred_obj.astype(int))
+    labels += list(sc_data.goal.astype(int))
+
+cm = confusion_matrix(labels, preds, normalize="true", labels=objs) * 100
+plot_confusion_matrix([cm], objs, axs, cmap="Greens")
+axs.set_xticklabels(obj_labels)
+axs.set_yticklabels(obj_labels)
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//objects_cm.pdf", format="pdf")
 
 # %% Success rates
 # load session data
@@ -726,13 +754,20 @@ fig.tight_layout()
 
 # %% Experience and fatigue
 fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharey=True)
-sns.countplot(data=hf_df, x="BCI use", ax=axs[0], order=['0h', '<1h', '<2h', '<4h', '>10h'])
-sns.countplot(data=hf_df, x="Fatigue", ax=axs[1], order=['Very low', 'Low', 'Medium', 'High', 'Very high'])
+sns.countplot(
+    data=hf_df, x="BCI use", ax=axs[0], order=["0h", "<1h", "<2h", "<4h", ">10h"]
+)
+sns.countplot(
+    data=hf_df,
+    x="Fatigue",
+    ax=axs[1],
+    order=["Very low", "Low", "Medium", "High", "Very high"],
+)
 sns.despine()
 fig.tight_layout()
 
 # %% Plot reaching trajectories
-%matplotlib qt
+# %matplotlib qt
 plt.close("all")
 participant = 5
 objs = ["7"]
