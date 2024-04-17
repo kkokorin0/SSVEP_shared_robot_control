@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from scipy.stats import pearsonr, sem, t, ttest_rel
-from sklearn.metrics import balanced_accuracy_score, confusion_matrix, recall_score
+from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 from statsmodels.api import qqplot
 
 from session_manager import CMD_MAP, FREQS
@@ -350,26 +350,54 @@ fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//decoding_cms.svg", format="svg")
 
 # %% Prediction accuracy by time step in SC trials
-fig, axs = plt.subplots(1, 1, figsize=(4, 4))
+fig, axs = plt.subplots(1, 1, figsize=(5, 2))
 blocks = [3, 5, 6, 7]
 obj_labels = ["TL", "TM", "TR", "ML", "M", "MR", "BL", "BM", "BR"]
 objs = np.arange(9)
 
-obj_recall = []
 preds = []
 labels = []
+trial_objs = []
+trial_recall = []
+preds_per_trial = []
 for p_id in P_IDS:
     data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
-    sc_data = data[data.block_i.isin(blocks) & (data.block == "SC")]
-    preds += list(sc_data.pred_obj.astype(int))
-    labels += list(sc_data.goal.astype(int))
+    sc_data = data[data.block_i.isin(blocks) & (data.block == "SC")].copy()
+    sc_data["pred_success"] = sc_data.goal.astype(int) == sc_data.pred_obj.astype(int)
+    trials = sc_data.groupby(["block_i", "trial"])
 
-cm = confusion_matrix(labels, preds, normalize="true", labels=objs) * 100
-plot_confusion_matrix([cm], objs, axs, cmap="Greens")
+    trial_objs.append(trials["goal"].first().values)
+    trial_recall.append(
+        (trials["pred_success"].sum() / trials["pred_success"].count()).values
+    )
+    preds_per_trial.append(trials["goal"].count().values)
+
+obj_trial_preds = pd.DataFrame(
+    {"recall": np.concatenate(trial_recall) * 100, "obj": np.concatenate(trial_objs)}
+)
+sns.boxplot(
+    data=obj_trial_preds,
+    x="obj",
+    y="recall",
+    whis=(0, 100),
+    showmeans=True,
+    meanprops={
+        "marker": "o",
+        "markerfacecolor": "white",
+        "markeredgecolor": "black",
+        "markersize": "4",
+    },
+    order=objs,
+    color=sns.color_palette()[7],
+    ax=axs,
+)
+axs.set_ylabel("Correct predictions\nper trial (%)")
+axs.set_xlabel("")
 axs.set_xticklabels(obj_labels)
-axs.set_yticklabels(obj_labels)
+axs.set_ylim([-5, 105])
+sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//objects_cm.pdf", format="pdf")
+# plt.savefig(FOLDER + "//Figures//object_preds.pdf", format="pdf")
 
 # %% Success rates
 # load session data
