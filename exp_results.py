@@ -79,8 +79,8 @@ def plot_lines(
     Args:
         data_pts (DataFrame): Results for best participants
         data_xs (DataFrame): Results for worst participants
-        x (str): x axis
-        y (str): y axis
+        x (str): x-axis
+        y (str): y-axis
         ax (axes): figure axes
         hue (str): participant id
         order (list of str): order of conditions
@@ -136,8 +136,8 @@ def plot_CI(
     Args:
         data_pts (DataFrame): Results for best participants
         data_xs (DataFrame): Results for worst participants
-        x (str): x axis
-        y (str): y axis
+        x (str): x-axis
+        y (str): y-axis
         ax (axes): figure axes
         hue (str): participant id
         order (list of str): order of conditions
@@ -187,14 +187,14 @@ def plot_reg(
     Args:
         data_pts (DataFrame): Results for best participants
         data_xs (DataFrame): Results for worst participants
-        x (str): x axis
-        y (str): y axis
+        x (str): x-axis
+        y (str): y-axis
         ax (axes): figure axes
         col (tuple): colour
-        xlabel (str): x axis label
-        ylabel (str): y axis label
-        xlim (list of float): x axis limits
-        ylim (list of float): y axis limits
+        xlabel (str): x-axis label
+        ylabel (str): y-axis label
+        xlim (list of float): x-axis limits
+        ylim (list of float): y-axis limits
         pt_size (float, optional): point marker size. Defaults to 3.
         x_size (float, optional): cross marker size . Defaults to 5.
     """
@@ -224,6 +224,46 @@ def plot_reg(
     r, p = pearsonr(cmb_data[x], cmb_data[y])
     print("-" * 40)
     print(f"correlation, r:{r:.3f}, p:{p:.3f}")
+
+
+def plot_box(data, x, y, ax, order, col, ylabel, ylim, hue=None):
+    """_summary_
+
+    Args:
+        data (DataFrame): Results
+        x (str): x axis
+        y (str): y axis
+        ax (axes): figure axes
+        order (list of str): order of conditions
+        col (tuple): colour
+        ylabel (str): y-axis label
+        ylim (_type_): y-axis limits
+        hue (_type_, optional): groups. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    sns.boxplot(
+        data=data,
+        x=x,
+        y=y,
+        whis=(0, 100),
+        showmeans=True,
+        meanprops={
+            "marker": "o",
+            "markerfacecolor": "white",
+            "markeredgecolor": "black",
+            "markersize": "4",
+        },
+        hue=hue,
+        order=order,
+        color=col,
+        ax=ax,
+    )
+    ax.set_ylabel(ylabel)
+    ax.set_xlabel("")
+    ax.set_ylim(ylim)
+    return ax
 
 
 def run_ttest(a, b, ci=0.95, plot_qq=False):
@@ -318,6 +358,25 @@ F_LAYOUTS = [
     [8, 9, 7, 13, 11],
 ]
 
+# %% Load participant data
+reach_blocks = [3, 5, 6, 7]
+p_data = pd.concat(
+    [
+        pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
+        for p_id in P_IDS
+    ]
+)
+
+# observation trials
+obs_data = p_data[p_data.block == "OBS"].copy().reset_index()
+
+# reaching trials
+reach_data = p_data[p_data.block_i.isin(reach_blocks)].copy().reset_index()
+reach_data["goal"] = reach_data["goal"].astype(int)
+reach_data["pred_obj"] = reach_data["pred_obj"].astype(int)
+reach_data["pred_success"] = reach_data.goal == reach_data.pred_obj
+reach_trials = reach_data.groupby(["p_id", "block_i", "block", "goal", "trial"])
+
 # %% Decoding performance
 fig, axs = plt.subplots(1, 2, figsize=(5.6, 2.8))
 
@@ -326,9 +385,8 @@ accs = []
 cms = []
 all_labels = []
 for p_id in P_IDS:
-    data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
-    preds = data[data.block == "OBS"].pred
-    labels = data[data.block == "OBS"].goal
+    preds = obs_data[obs_data.p_id == p_id].pred
+    labels = obs_data[obs_data.p_id == p_id].goal
     all_labels.append(labels.value_counts())
     accs.append(balanced_accuracy_score(labels, preds) * 100)
     cms.append(confusion_matrix(labels, preds, normalize="true", labels=CMDS) * 100)
@@ -338,10 +396,9 @@ plot_confusion_matrix(cms, CMDS, axs[0], cmap="Blues")
 # by frequency
 f_cms = []
 for p_id, p_freqs in zip(P_IDS, F_LAYOUTS):
-    data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
     freq_map = {_d: _f for _f, _d in zip(p_freqs, CMD_MAP.keys())}
-    preds = [freq_map[_p] for _p in data[data.block == "OBS"].pred]
-    labels = [freq_map[_l] for _l in data[data.block == "OBS"].goal]
+    preds = [freq_map[_p] for _p in obs_data[obs_data.p_id == p_id].pred]
+    labels = [freq_map[_l] for _l in obs_data[obs_data.p_id == p_id].goal]
     f_cms.append(confusion_matrix(labels, preds, normalize="true", labels=FREQS) * 100)
 
 plot_confusion_matrix(f_cms, FREQS, axs[1], cmap="Purples")
@@ -349,77 +406,20 @@ plot_confusion_matrix(f_cms, FREQS, axs[1], cmap="Purples")
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//decoding_cms.svg", format="svg")
 
-# %% Prediction accuracy by time step in SC trials
-fig, axs = plt.subplots(1, 1, figsize=(5, 2))
-blocks = [3, 5, 6, 7]
-obj_labels = ["TL", "TM", "TR", "ML", "M", "MR", "BL", "BM", "BR"]
-objs = np.arange(9)
-
-preds = []
-labels = []
-trial_objs = []
-trial_recall = []
-preds_per_trial = []
-for p_id in P_IDS:
-    data = pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
-    sc_data = data[data.block_i.isin(blocks) & (data.block == "SC")].copy()
-    sc_data["pred_success"] = sc_data.goal.astype(int) == sc_data.pred_obj.astype(int)
-    trials = sc_data.groupby(["block_i", "trial"])
-
-    trial_objs.append(trials["goal"].first().values)
-    trial_recall.append(
-        (trials["pred_success"].sum() / trials["pred_success"].count()).values
-    )
-    preds_per_trial.append(trials["goal"].count().values)
-
-obj_trial_preds = pd.DataFrame(
-    {"recall": np.concatenate(trial_recall) * 100, "obj": np.concatenate(trial_objs)}
-)
-sns.boxplot(
-    data=obj_trial_preds,
-    x="obj",
-    y="recall",
-    whis=(0, 100),
-    showmeans=True,
-    meanprops={
-        "marker": "o",
-        "markerfacecolor": "white",
-        "markeredgecolor": "black",
-        "markersize": "4",
-    },
-    order=objs,
-    color=sns.color_palette()[7],
-    ax=axs,
-)
-axs.set_ylabel("Correct predictions\nper trial (%)")
-axs.set_xlabel("")
-axs.set_xticklabels(obj_labels)
-axs.set_ylim([-5, 105])
-sns.despine()
-fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//object_preds.pdf", format="pdf")
-
 # %% Success rates
-# load session data
-sessions = []
-for p_id in P_IDS:
-    sessions.append(
-        pd.read_csv(FOLDER + "//" + p_id + "_results_session.csv", index_col=0)
-    )
-
-session_df = pd.concat(sessions).reset_index(drop=True)
-session_df["p_id"] = np.repeat(P_IDS, 3)
-
-# success rates
+trial_success = reach_trials.success.first().reset_index()
+success = (
+    trial_success.groupby(["p_id", "block"]).success.sum() * 100 / 24
+).reset_index()
 c = sns.color_palette()[2]
 fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
-session_best = session_df[session_df.p_id.isin(P_ID_HIGH)]
-session_worst = session_df[session_df.p_id.isin(P_ID_LOW)]
+
+# success rate
 plot_lines(
-    session_best,
-    session_worst,
+    success[success.p_id.isin(P_ID_HIGH)],
+    success[success.p_id.isin(P_ID_LOW)],
     "block",
-    "success_rate",
+    "success",
     axs[0],
     "p_id",
     ["DC", "SC"],
@@ -427,11 +427,24 @@ plot_lines(
     "Success rate (%)",
     [-5, 105],
 )
+
+# change in success rate
+success_wide = success.pivot(
+    index="p_id", columns="block", values="success"
+).reset_index()
+success_wide["SC-DC"] = success_wide["SC"] - success_wide["DC"]
+success = pd.melt(
+    success_wide,
+    id_vars="p_id",
+    value_vars=["DC", "SC", "SC-DC"],
+    var_name="block",
+    value_name="success",
+)
 plot_CI(
-    session_best,
-    session_worst,
+    success[success.p_id.isin(P_ID_HIGH)],
+    success[success.p_id.isin(P_ID_LOW)],
     "block",
-    "success_rate",
+    "success",
     axs[1],
     "p_id",
     ["SC-DC"],
@@ -443,9 +456,10 @@ sns.despine()
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//success.svg", format="svg")
 
+# compare success rates
 run_ttest(
-    session_df[session_df.block == "SC"]["success_rate"].values,
-    session_df[session_df.block == "DC"]["success_rate"].values,
+    success[success.block == "SC"]["success"].values,
+    success[success.block == "DC"]["success"].values,
 )
 
 # %% Success rate bars
@@ -457,9 +471,9 @@ mean_marker = {
     "markersize": "4",
 }
 sns.boxplot(
-    data=session_df,
+    data=success,
     x="block",
-    y="success_rate",
+    y="success",
     ax=axs,
     order=["DC", "SC"],
     palette=[c, c],
@@ -476,15 +490,41 @@ sns.despine()
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//success_bars.svg", format="svg")
 
-# %% Trajectory lengths
-# lengths
+# %% Trajectory lengths (cm)
+trial_lens = (reach_trials["dL"].sum() / 10).reset_index()
+lens = (
+    trial_lens[trial_success.success == 1]
+    .groupby(["p_id", "block", "goal"])
+    .dL.mean()
+    .reset_index()
+)
+
+# remove objects that have no successful DC or SC trials
+len_valid = lens[lens.block == "DC"].merge(
+    lens[lens.block == "SC"], on=["p_id", "goal"]
+)
+len_valid_wide = len_valid.groupby(["p_id"])[["dL_x", "dL_y"]].mean().reset_index()
+len_valid_wide["SC-DC"] = len_valid_wide["dL_y"] - len_valid_wide["dL_x"]
+len_valid_wide.columns = ["p_id", "DC", "SC", "SC-DC"]
+len_valid = pd.melt(
+    len_valid_wide,
+    id_vars="p_id",
+    value_vars=["DC", "SC", "SC-DC"],
+    var_name="block",
+    value_name="dL",
+)
+
+# length
 c = sns.color_palette()[1]
 fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
 plot_lines(
-    session_best,
-    session_worst,
+    len_valid[lens.p_id.isin(P_ID_HIGH)],
+    lens[lens.p_id.isin(P_ID_LOW)]
+    .groupby(["p_id", "block"])["dL"]
+    .mean()
+    .reset_index(),
     "block",
-    "len_cm",
+    "dL",
     axs[0],
     "p_id",
     ["DC", "SC"],
@@ -492,11 +532,13 @@ plot_lines(
     "Trajectory length (cm)",
     [28, 73],
 )
+
+# change in length
 plot_CI(
-    session_best,
-    session_worst,
+    len_valid[len_valid.p_id.isin(P_ID_HIGH)],
+    len_valid[len_valid.p_id.isin(P_ID_LOW)],
     "block",
-    "len_cm",
+    "dL",
     axs[1],
     "p_id",
     ["SC-DC"],
@@ -509,10 +551,66 @@ sns.despine()
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//lengths.svg", format="svg")
 
+# compare trajectory length
 run_ttest(
-    session_best[session_best.block == "SC"]["len_cm"].values,
-    session_best[session_best.block == "DC"]["len_cm"].values,
+    len_valid[len_valid.block == "SC"]["dL"].values,
+    len_valid[len_valid.block == "DC"]["dL"].values,
 )
+
+# %% Success rate, trajectory length and predictions by object
+fig, axs = plt.subplots(3, 1, figsize=(5, 6))
+
+# success rate and trajectory length
+trial_success = reach_trials.success.max().reset_index()
+success_rate = (
+    trial_success.groupby(["p_id", "block", "goal"]).success.sum() / 6 * 100
+).reset_index()
+plot_box(
+    success_rate[success_rate.block == "DC"],
+    "goal",
+    "success",
+    axs[0],
+    objs,
+    sns.color_palette()[2],
+    "Success rate (%)",
+    [-5, 105],
+)
+
+# trajectory lengths
+trial_trajs = reach_trials.dL_cm.sum().reset_index()
+trial_trajs["success"] = trial_success.success
+traj_lens = (
+    trial_trajs[trial_trajs.success == 1]
+    .groupby(["p_id", "block", "goal"])
+    .dL_cm.mean()
+    .reset_index()
+)
+sns.pointplot(
+    data=trial_trajs[trial_trajs.success == 1],
+    x="block",
+    y="dL_cm",
+    hue="p_id",
+    ax=axs[1],
+)
+
+# correct SC predictions
+trial_recall = (
+    (reach_trials.pred_success.sum() / reach_trials.pred_success.count()) * 100
+).reset_index()
+
+plot_box(
+    trial_recall[trial_recall.block == "SC"],
+    "goal",
+    "pred_success",
+    axs[2],
+    objs,
+    sns.color_palette()[7],
+    "Correct predictions\nper trial (%)",
+    [-5, 105],
+)
+sns.despine()
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//object_preds.pdf", format="pdf")
 
 # %% Impact of decoding accuracy
 fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharex=True)

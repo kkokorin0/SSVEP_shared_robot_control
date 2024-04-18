@@ -47,7 +47,7 @@ CH_NAMES = [
 SSVEP_CHS = CH_NAMES[:9]
 CMDS = list(CMD_MAP.keys())
 T_NOM = np.array([0.250, -0.204, -0.276])
-P_ID = 4
+P_ID = 1
 FOLDER = (
     r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\P"
     + str(P_ID)
@@ -180,141 +180,28 @@ online_df = pd.DataFrame(
         "u_cmb_z",
     ],
 )
-print(online_df.groupby("block_i")["trial"].max())  # trials/block
-online_df.to_csv(
-    FOLDER
-    + "//P%s_results_tstep_%s.csv" % (P_ID, datetime.now().strftime("%Y%m%d_%H%M%S"))
-)
 
-# %% Load data
-results = "P%d_results_tstep.csv" % P_ID
-
-online_df = pd.read_csv(FOLDER + "//" + results, index_col=0)
-online_df["label"] = (
-    online_df.block
-    + " B"
-    + online_df.block_i.map(str)
-    + " T"
-    + online_df.trial.map(str)
-    + " G"
-    + online_df.goal
-)
-online_df.groupby("block_i")["trial"].max()
-
-# %% Extract step time and length across all blocks
-fig, axs = plt.subplots(2, 1, figsize=(4, 4), sharex=True, sharey=False)
-
+# calculate step length
 trial_i = 0
-dts = []
 dLs = []
 for i, row in online_df.iterrows():
     if row.trial != trial_i:
         trial_i = row.trial
-        dts.append(0)
         dLs.append(0)
     else:
-        dts.append((row.ts - online_df.iloc[i - 1].ts) / FS)
         dLs.append(
             np.linalg.norm(
                 (row[["x", "y", "z"]] - online_df.iloc[i - 1][["x", "y", "z"]])
             )
             * 1000
         )
-online_df["dt"] = dts
 online_df["dL"] = dLs
 
-# %% Online decoding performance
-obs_df = online_df[online_df.block == "OBS"].copy()
-
-# confusion matrix
-fig, axs = plt.subplots(1, 1, figsize=(3, 3))
-conf_mat = confusion_matrix(
-    obs_df["goal"], obs_df["pred"], normalize="true", labels=CMDS
-)
-sns.heatmap(
-    conf_mat * 100,
-    annot=True,
-    fmt=".1f",
-    cmap="Blues",
-    cbar=False,
-    xticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
-    yticklabels=["%s (%s)" % (_c, _f) for _c, _f in zip(CMDS, freqs)],
-    ax=axs,
-)
-axs.set_title("%.1f" % (100 * balanced_accuracy_score(obs_df["goal"], obs_df["pred"])))
-axs.set_xlabel("Predicted")
-axs.set_ylabel("True")
-
-fig.tight_layout()
-plt.savefig(FOLDER + "//decoding_acc.svg", format="svg")
-
-# %% DC and SC trials
-test_blocks = [3, 5, 6, 7]
-test_df = online_df[online_df.block_i.isin(test_blocks)].copy()
-trial_df = test_df.groupby(by=["label", "block", "goal"])["success"].max().reset_index()
-trial_df["len_cm"] = list(test_df.groupby(["label"])["dL"].sum() / 10)
-
-# success rate
-session_df = (
-    trial_df.groupby(["block"])["success"].sum()
-    / trial_df.groupby(["block"])["success"].count()
-    * 100
-).reset_index()
-session_df.rename(columns={"success": "success_rate"}, inplace=True)
-
-# trajectory length (only include objects with >1 successful reach)
-len_df = (
-    trial_df[trial_df.success == 1].groupby(["block", "goal"])["len_cm"].mean()
-).reset_index()
-len_valid = len_df[len_df.block == "DC"].merge(len_df[len_df.block == "SC"], on="goal")
-session_df["len_cm"] = [len_valid.len_cm_x.mean(), len_valid.len_cm_y.mean()]
-
-# %% Plot reaching results
-fig, axs = plt.subplots(1, 4, figsize=(5, 2), width_ratios=[2, 1, 2, 1])
-
-# success rate
-sns.barplot(data=session_df, x="block", y="success_rate", ax=axs[0])
-axs[0].set_ylabel("Success rate (%)")
-axs[0].set_ylim([0, 100])
-
-# change in success rate
-dF = (
-    session_df[session_df.block == "SC"].success_rate.values
-    - session_df[session_df.block == "DC"].success_rate.values
-)
-sns.barplot(y=dF, ax=axs[1])
-axs[1].set_ylabel("$\Delta$ Success rate (%)")
-axs[1].set_ylim([-100, 100])
-
-# trajectory length
-sns.barplot(data=session_df, x="block", y="len_cm", ax=axs[2])
-axs[2].set_ylabel("Trajectory length (cm)")
-axs[2].set_ylim([0, 80])
-
-# change in trajectory length
-dL = (
-    session_df[session_df.block == "SC"].len_cm.values
-    - session_df[session_df.block == "DC"].len_cm.values
-)
-sns.barplot(y=dL, ax=axs[3])
-axs[3].set_ylabel("$\Delta$ Trajectory length (cm)")
-axs[3].set_ylim([-20, 20])
-
-for ax, xlabel in zip(axs, ["", "SC-DC", "", "SC-DC"]):
-    ax.set_xlabel(xlabel)
-sns.despine()
-fig.tight_layout()
-plt.savefig(FOLDER + "//reaching_results.svg", format="svg")
-
-# store data
-session_df = pd.concat(
-    [session_df, pd.DataFrame({"block": "SC-DC", "success_rate": dF, "len_cm": dL})]
-)
-session_df.to_csv(
+# save results
+online_df.to_csv(
     FOLDER
-    + "//P%s_results_session_%s.csv" % (P_ID, datetime.now().strftime("%Y%m%d_%H%M%S"))
+    + "//P%s_results_tstep_%s.csv" % (P_ID, datetime.now().strftime("%Y%m%d_%H%M%S"))
 )
-session_df.head()
 
 # %% Offline decoding with variable window size
 raw, events = load_recording(CH_NAMES, FOLDER, f"P{P_ID}_S1_R1.xdf")
@@ -371,4 +258,3 @@ for window_s, ax in zip([1, 1.5, 2, 2.5, 3], axs):
     ax.set_ylabel("True")
 
 fig.tight_layout()
-plt.savefig(FOLDER + "//offline_decoding_acc.svg", format="svg")
