@@ -9,7 +9,7 @@ from statsmodels.api import qqplot
 
 from session_manager import CMD_MAP, FREQS
 
-sns.set_style("ticks", {"axes.grid": False})
+# sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
 sns.set_palette("colorblind")
 
@@ -559,14 +559,15 @@ run_ttest(
 
 # %% Success rate, trajectory length and predictions by object
 fig, axs = plt.subplots(3, 1, figsize=(5, 6))
+objs = np.arange(9)
+obj_labels = ["TL", "TM", "TR", "ML", "M", "MR", "BL", "BM", "BR"]
 
-# success rate and trajectory length
-trial_success = reach_trials.success.max().reset_index()
-success_rate = (
+# success rate
+obj_success = (
     trial_success.groupby(["p_id", "block", "goal"]).success.sum() / 6 * 100
 ).reset_index()
 plot_box(
-    success_rate[success_rate.block == "DC"],
+    obj_success[obj_success.block == "DC"],
     "goal",
     "success",
     axs[0],
@@ -576,21 +577,16 @@ plot_box(
     [-5, 105],
 )
 
-# trajectory lengths
-trial_trajs = reach_trials.dL_cm.sum().reset_index()
-trial_trajs["success"] = trial_success.success
-traj_lens = (
-    trial_trajs[trial_trajs.success == 1]
-    .groupby(["p_id", "block", "goal"])
-    .dL_cm.mean()
-    .reset_index()
-)
-sns.pointplot(
-    data=trial_trajs[trial_trajs.success == 1],
-    x="block",
-    y="dL_cm",
-    hue="p_id",
-    ax=axs[1],
+# trajectory length
+plot_box(
+    lens[lens.block == "DC"],
+    "goal",
+    "dL",
+    axs[1],
+    objs,
+    sns.color_palette()[1],
+    "Trajectory length (cm)",
+    [20, 80],
 )
 
 # correct SC predictions
@@ -605,26 +601,29 @@ plot_box(
     axs[2],
     objs,
     sns.color_palette()[7],
-    "Correct predictions\nper trial (%)",
+    "Correct predictions (%)",
     [-5, 105],
 )
+
+for ax in axs:
+    ax.set_xticklabels(obj_labels)
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//object_preds.pdf", format="pdf")
+# plt.savefig(FOLDER + "//Figures//obj_results.svg", format="svg")
 
 # %% Impact of decoding accuracy
 fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharex=True)
 acc_df = pd.DataFrame({"p_id": P_IDS, "acc": accs, "mode": [""] * len(P_IDS)})
 
 # success rate
-acc_vs_dc_df = pd.merge(session_df[session_df.block == "DC"], acc_df)
+acc_vs_dc_df = pd.merge(success[success.block == "DC"], acc_df)
 acc_vs_dc_df_best = acc_vs_dc_df[acc_vs_dc_df.p_id.isin(P_ID_HIGH)]
 acc_vs_dc_df_worst = acc_vs_dc_df[acc_vs_dc_df.p_id.isin(P_ID_LOW)]
 plot_reg(
     acc_vs_dc_df_best,
     acc_vs_dc_df_worst,
     "acc",
-    "success_rate",
+    "success",
     axs[0],
     sns.color_palette()[0],
     "Accuracy (%)",
@@ -636,7 +635,7 @@ plot_reg(
 )
 
 # change in success rate
-acc_vs_sc_df = pd.merge(session_df[session_df.block == "SC-DC"], acc_df)
+acc_vs_sc_df = pd.merge(success[success.block == "SC-DC"], acc_df)
 
 acc_vs_sc_df_best = acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_HIGH)]
 acc_vs_sc_df_worst = acc_vs_sc_df[acc_vs_sc_df.p_id.isin(P_ID_LOW)]
@@ -644,7 +643,7 @@ plot_reg(
     acc_vs_sc_df_best,
     acc_vs_sc_df_worst,
     "acc",
-    "success_rate",
+    "success",
     axs[1],
     sns.color_palette()[0],
     "Accuracy (%)",
@@ -654,21 +653,6 @@ plot_reg(
     pt_size=10,
     x_size=30,
 )
-
-# change in trajectory length
-# sns.regplot(
-#     data=acc_vs_sc_df,
-#     x="acc",
-#     y="len_cm",
-#     ax=axs[2],
-#     color=sns.color_palette()[1],
-#     scatter_kws={"s": 5},
-# )
-# axs[2].set_ylim([-25, 0])
-# axs[2].set_xlabel("Accuracy (%)")
-# axs[2].set_ylabel("$\Delta$ Trajectory length (cm)")
-# r, p = pearsonr(acc_vs_sc_df_best.acc, acc_vs_sc_df_best.len_cm)
-# print("correlation, r:%.3f, p: %.3f" % (r, p))
 
 fig.tight_layout()
 sns.despine()
@@ -722,7 +706,7 @@ plot_CI(
     [""],
     sns.color_palette()[0],
     "Accuracy (%)",
-    [30, 100],
+    [0, 100],
 )
 print("ci:", get_sample_CI(acc_df["acc"].values))
 
@@ -757,7 +741,7 @@ sns.barplot(
     palette=[sns.color_palette()[7], sns.color_palette()[8]],
 )
 axs[2].set_ylim([0, 150])
-axs[2].set_ylabel("Count")
+axs[2].set_ylabel("Total failures")
 axs[2].set_xlabel("")
 axs[2].set_xticklabels(["Bounds", "Length", "Object"])
 axs[2].legend(title="")
@@ -893,11 +877,8 @@ sns.despine()
 fig.tight_layout()
 
 # %% Plot reaching trajectories
-# %matplotlib qt
-plt.close("all")
-participant = 5
-objs = ["7"]
-blocks = [3, 5, 6, 7]
+p_trajs = reach_data[reach_data.p_id == "P5"].copy()
+objs = [7]
 fig = plt.figure(figsize=(5, 5))
 ax = plt.axes(projection="3d")
 
@@ -916,12 +897,6 @@ obj_coords = np.array(
     ]
 ).reshape((-1, 3))
 
-# load data
-results = "P%d_results_tstep.csv" % participant
-online_df = pd.read_csv(FOLDER + "//" + results, index_col=0)
-reach_df = online_df[online_df.block_i.isin(blocks) & online_df.goal.isin(objs)].copy()
-reach_df["label"] = reach_df.block_i.map(str) + " " + reach_df.trial.map(str)
-
 # objects
 for obj_i, coords in enumerate(obj_coords):
     xc, yc, zc = coords - origin
@@ -930,14 +905,13 @@ for obj_i, coords in enumerate(obj_coords):
     theta_grid, z_grid = np.meshgrid(theta, z)
     x_grid = (obj_r + finger_r) * np.cos(theta_grid) + xc
     y_grid = (obj_r + finger_r) * np.sin(theta_grid) + yc
-    alpha = 0.5 if str(obj_i) in online_df.goal.unique() else 0.1
+    alpha = 0.5 if obj_i in p_trajs.goal.unique() else 0.1
     ax.plot_surface(x_grid, y_grid, z_grid, alpha=alpha, color="grey")
 
 start_pos = []
-for label in reach_df.label.unique():
-    trial = reach_df[reach_df.label == label]
+for group, trial in p_trajs[p_trajs.goal.isin(objs)].groupby(["block_i", "trial"]):
     start_pos.append(np.array(trial[["x", "y", "z"]].values[0]) - origin)
-    if trial.block.max() == "SC":
+    if trial.block.iloc[0] == "SC":
         col = sns.color_palette()[0] if trial.success.max() else sns.color_palette()[1]
         ls = "-"
     else:
@@ -953,10 +927,11 @@ for label in reach_df.label.unique():
         c=col,
         alpha=0.75,
         linestyle=ls,
-        linewidth=2.5,
+        linewidth=2,
     )
+    ax.plot(traj[-1, 0], traj[-1, 1], traj[-1, 2], "x", c=col, markersize=5)
 
-# plot starting point
+# starting point
 start_pos = np.array(start_pos).mean(axis=0)
 ax.plot(start_pos[0], start_pos[1], start_pos[2], "o", c="k", markersize=5)
 
