@@ -9,7 +9,7 @@ from statsmodels.api import qqplot
 
 from session_manager import CMD_MAP, FREQS
 
-# sns.set_style("ticks", {"axes.grid": False})
+sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
 sns.set_palette("colorblind")
 
@@ -405,6 +405,42 @@ plot_confusion_matrix(f_cms, FREQS, axs[1], cmap="Purples")
 
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//decoding_cms.svg", format="svg")
+
+# %% Offline decoding correlations
+fig, axs = plt.subplots(1, 2, figsize=(5, 1.5), sharex=True, sharey=True)
+
+for ax, f_trial in zip(axs.flatten(), [8]):
+    rho_trials = pd.read_csv(FOLDER + "//rhos.csv", index_col=0)
+    f_bins = rho_trials.columns[:-32]
+
+    rho_counts = []
+    for p_id in P_IDS:
+        rho_13 = rho_trials[
+            (rho_trials.p_id == p_id) & (rho_trials.ep_freq == f_trial)
+        ][f_bins].values
+        max_freqs = np.array(f_bins)[np.argmax(rho_13, axis=1)]
+        freq_counts = {np.round(float(_f), 1): np.sum(max_freqs == _f) for _f in f_bins}
+        rho_counts.append(freq_counts | {"p_id": p_id})
+
+    rho_count_df = pd.DataFrame.from_dict(rho_counts).melt(id_vars="p_id")
+    rho_count_df["pc"] = rho_count_df.value / 70 * 100
+    sns.lineplot(
+        data=rho_count_df,
+        x="variable",
+        y="pc",
+        ax=ax,
+        color=sns.color_palette()[-1],
+    )
+    ax.axvline(f_trial, c="k", linestyle="--", alpha=0.25)
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("")
+    ax.set_xlim([7, 16])
+    ax.set_ylim([0, 60])
+
+axs[0].set_ylabel("Chunks (%)")
+sns.despine()
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//8_13Hz_offline.svg", format="svg")
 
 # %% Success rates
 trial_success = reach_trials.success.first().reset_index()
