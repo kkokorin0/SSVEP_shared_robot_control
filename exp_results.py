@@ -1,13 +1,18 @@
 # %% Packages
+import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from mne import concatenate_epochs, read_epochs
 from scipy.stats import pearsonr, sem, t, ttest_rel
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 from statsmodels.api import qqplot
 
 from session_manager import CMD_MAP, FREQS
+
+warnings.simplefilter("ignore", category=(UserWarning, FutureWarning))
 
 sns.set_style("ticks", {"axes.grid": False})
 sns.set_context("paper")
@@ -362,7 +367,7 @@ F_LAYOUTS = [
 reach_blocks = [3, 5, 6, 7]
 p_data = pd.concat(
     [
-        pd.read_csv(FOLDER + "//" + p_id + "_results_tstep.csv", index_col=0)
+        pd.read_csv(FOLDER + "//tstep//" + p_id + "_results_tstep.csv", index_col=0)
         for p_id in P_IDS
     ]
 )
@@ -409,7 +414,7 @@ fig.tight_layout()
 # %% Offline decoding correlations
 fig, axs = plt.subplots(1, 2, figsize=(5, 1.5), sharex=True, sharey=True)
 
-for ax, f_trial in zip(axs.flatten(), [8]):
+for ax, f_trial in zip(axs.flatten(), [8, 13]):
     rho_trials = pd.read_csv(FOLDER + "//rhos.csv", index_col=0)
     f_bins = rho_trials.columns[:-32]
 
@@ -441,6 +446,40 @@ axs[0].set_ylabel("Chunks (%)")
 sns.despine()
 fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//8_13Hz_offline.svg", format="svg")
+
+# %% PSD
+ch_i = 1  # Oz
+fmin = 5
+fmax = 30
+fig, axs = plt.subplots(5, 1, figsize=(5, 3.5), sharex=True, sharey=True)
+
+all_eps = concatenate_epochs(
+    [
+        read_epochs(FOLDER + "//epochs//" + _p + "_obs-epo.fif", preload=True)
+        for _p in P_IDS
+    ]
+)
+for f, ax in zip(FREQS, axs):
+    psd = all_eps[str(f)].compute_psd(
+        fmin=fmin, fmax=fmax, method="welch", remove_dc=False
+    )
+    sns.lineplot(
+        x=psd.freqs,
+        y=np.mean(psd.get_data()[:, ch_i, :], axis=0) / 1e-12,
+        ax=ax,
+        label=f,
+        c=sns.color_palette()[9],
+    )
+    [ax.axvline(_f, c="k", alpha=0.25) for _f in [f, 2 * f]]
+    ax.legend(title="", loc="upper right")
+    ax.set_ylabel("")
+    ax.set_ylim([0, 8])
+
+axs[4].set_ylabel("PSD")
+axs[4].set_xlabel("Frequency (Hz)")
+sns.despine()
+fig.tight_layout()
+# plt.savefig(FOLDER + "//Figures//Oz_psd.pdf", format="pdf")
 
 # %% Success rates
 trial_success = reach_trials.success.first().reset_index()
@@ -594,7 +633,7 @@ run_ttest(
 )
 
 # %% Success rate, trajectory length and predictions by object
-fig, axs = plt.subplots(3, 1, figsize=(5, 6))
+fig, axs = plt.subplots(3, 1, figsize=(5, 5), sharex=True)
 objs = np.arange(9)
 obj_labels = ["TL", "TM", "TR", "ML", "M", "MR", "BL", "BM", "BR"]
 
@@ -641,6 +680,7 @@ plot_box(
     [-5, 105],
 )
 
+axs[2].set_xlabel("Object")
 for ax in axs:
     ax.set_xticklabels(obj_labels)
 sns.despine()
@@ -899,7 +939,7 @@ sns.despine()
 fig.tight_layout()
 
 # %% Experience and fatigue
-fig, axs = plt.subplots(1, 2, figsize=(6, 3), sharey=True)
+fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharey=True)
 sns.countplot(
     data=hf_df, x="BCI use", ax=axs[0], order=["0h", "<1h", "<2h", "<4h", ">10h"]
 )

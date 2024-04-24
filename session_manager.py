@@ -16,7 +16,7 @@ from stimulus import StimController
 
 # session
 P_ID = 99  # participant ID
-FOLDER = r"C:\Users\kkokorin\OneDrive - The University of Melbourne\Documents\CurrentStudy\Logs"
+FOLDER = ""
 INIT_MS = 5000  # time to settle at the start of each block/trial
 
 # observation block
@@ -64,10 +64,10 @@ ALPHA_A = 10  # assistance aggressiveness
 # stimulus
 FREQS = [7, 8, 9, 11, 13]  # top, bottom, left, right, middle (Hz)
 STIM_DIST = 0.15  # distance from end-effector (m)
-HOLOLENS_IP = "192.168.137.228"  # HoloLens
+HOLOLENS_IP = ""  # HoloLens IP
 
 # robot
-REACHY_WIRED = "169.254.238.100"  # Reachy
+REACHY_WIRED = ""  # Reachy IP
 SETUP_POS = [25, 0, 0, -110, 0, -10, 0]  # starting joint angles
 REST_POS = [15, 0, 0, -75, 0, -30, 0]  # arm drop position
 MOVE_SPEED_S = 1  # arm movement duration

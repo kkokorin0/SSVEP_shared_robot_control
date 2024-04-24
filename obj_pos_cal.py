@@ -23,6 +23,9 @@ from session_manager import (
 )
 
 if __name__ == "__main__":
+    """Move to each object position continuously and check for collisions to assess calibrated
+    object positions."""
+
     session_id = str(P_ID) + "_" + datetime.now().strftime("%Y_%m_%d")
     log_file = FOLDER + "//" + session_id + ".log"
     logging.basicConfig(filename=log_file, level=logging.DEBUG)

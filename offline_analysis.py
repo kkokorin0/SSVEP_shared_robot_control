@@ -40,10 +40,10 @@ CMDS = list(CMD_MAP.keys())
 FOLDER = ""
 
 # %% Load, filter and epoch recording
-p_id = "P1"
+p_id = "P7"
 
 # load recording
-raw, events = load_recording(CH_NAMES, FOLDER + "//" + p_id, p_id + "_S1_R1.xdf")
+raw, events = load_recording(CH_NAMES, FOLDER, f"//{p_id}_S1_R1.xdf")
 obs_events = extract_events(events, [f"go:{_c}" for _c in CMDS])
 freqs = [int(_f) for _f in extract_events(events, ["freqs"])[0][2][-11:].split(",")]
 c_to_f = {_c: _f for _c, _f in zip(CMDS, freqs)}
@@ -61,9 +61,11 @@ epochs = mne.Epochs(
     tmax=OBS_TRIAL_MS / 1000,
     baseline=None,
 )
+epochs.save(FOLDER + f"//{p_id}_obs-epo.fif")
 
 # %% Offline decoding with variable window size
 windows = [1, 1.5, 2, 2.5, 3]
+
 recall = []
 for window_s in windows:
     decoder = Decoder(window_s, FS, HARMONICS, freqs)
@@ -79,12 +81,13 @@ for window_s in windows:
             y_actual.append(label)
             pred = decoder.predict(data[:, sample_i - N_w : sample_i])
             y_preds.append(freqs[pred])
+
     recall.append(recall_score(y_actual, y_preds, labels=freqs, average=None) * 100)
 
 # plot recall vs window size
 recall_df = pd.DataFrame(np.array(recall).T, columns=windows)
 recall_df["freqs"] = freqs
-recall_df.to_csv(FOLDER + f"//{p_id}//" + p_id + "_recall.csv", index=False)
+recall_df.to_csv(FOLDER, f"//{p_id}_recall.csv", index=False)
 
 # %% Correlation scores across different freqs
 targets = np.arange(7, 26, 0.2)
@@ -110,4 +113,4 @@ for trial_i, data in enumerate(epochs.get_data()):
 rho_df = pd.DataFrame(rhos, columns=targets)
 rho_df["p_id"] = p_id
 rho_df["ep_freq"] = labels
-rho_df.to_csv(FOLDER + f"//{p_id}//" + p_id + "_rho.csv", index=False)
+rho_df.to_csv(FOLDER, f"//{p_id}_rho.csv", index=False)
