@@ -451,7 +451,7 @@ fig.tight_layout()
 ch_i = 1  # Oz
 fmin = 5
 fmax = 30
-fig, axs = plt.subplots(5, 1, figsize=(5, 3.5), sharex=True, sharey=True)
+fig, axs = plt.subplots(5, 1, figsize=(5, 2.5), sharex=True, sharey=True)
 
 all_eps = concatenate_epochs(
     [
@@ -471,7 +471,7 @@ for f, ax in zip(FREQS, axs):
         c=sns.color_palette()[9],
     )
     [ax.axvline(_f, c="k", alpha=0.25) for _f in [f, 2 * f]]
-    ax.legend(title="", loc="upper right")
+    ax.legend(title="", loc="upper left", bbox_to_anchor=(1, 1))
     ax.set_ylabel("")
     ax.set_ylim([0, 8])
 
@@ -633,7 +633,7 @@ run_ttest(
 )
 
 # %% Success rate, trajectory length and predictions by object
-fig, axs = plt.subplots(3, 1, figsize=(5, 5), sharex=True)
+fig, axs = plt.subplots(3, 1, figsize=(5, 3.5), sharex=True)
 objs = np.arange(9)
 obj_labels = ["TL", "TM", "TR", "ML", "M", "MR", "BL", "BM", "BR"]
 
@@ -648,7 +648,7 @@ plot_box(
     axs[0],
     objs,
     sns.color_palette()[2],
-    "Success rate (%)",
+    "Success\nrate (%)",
     [-5, 105],
 )
 
@@ -660,7 +660,7 @@ plot_box(
     axs[1],
     objs,
     sns.color_palette()[1],
-    "Trajectory length (cm)",
+    "Trajectory\nlength (cm)",
     [20, 80],
 )
 
@@ -676,7 +676,7 @@ plot_box(
     axs[2],
     objs,
     sns.color_palette()[7],
-    "Correct predictions (%)",
+    "Correct\npredictions (%)",
     [-5, 105],
 )
 
@@ -736,7 +736,7 @@ sns.despine()
 
 # %% Offline decoding recall with variable window sizes
 window_df = pd.read_csv(FOLDER + "//variable_window.csv", index_col=None)
-fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharey=True)
+fig, axs = plt.subplots(1, 2, figsize=(5, 1.5), sharey=True)
 for p_id, ax in zip(window_df["p_id"].unique(), axs):
     data = window_df[window_df.p_id == p_id].copy()
     sns.pointplot(
@@ -767,7 +767,7 @@ sns.despine()
 # plt.savefig(FOLDER + "//Figures//P7_P9_window.svg", format="svg")
 
 # %% Summary of decoding performance and failure analysis
-fig, axs = plt.subplots(1, 3, figsize=(5, 2), width_ratios=[1, 1, 2.5])
+fig, axs = plt.subplots(1, 3, figsize=(5, 1.5), width_ratios=[1, 1, 2.5])
 result_df = pd.read_csv(FOLDER + "//trial_results.csv", index_col=None)
 result_df["bounds"] = result_df["collide"] + result_df["near"]
 
@@ -798,7 +798,7 @@ plot_CI(
     [""],
     sns.color_palette()[3],
     "ITR (bits/min)",
-    [0, 125],
+    [0, 150],
 )
 print("ci:", get_sample_CI(acc_df["ITR"].values))
 
