@@ -10,7 +10,7 @@ from scipy.stats import pearsonr, sem, t, ttest_rel
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
 from statsmodels.api import qqplot
 
-from session_manager import CMD_MAP, FREQS
+from session_manager import CMD_MAP, FREQS, OBJ_COORDS
 
 warnings.simplefilter("ignore", category=(UserWarning, FutureWarning))
 
@@ -566,6 +566,9 @@ fig.tight_layout()
 # plt.savefig(FOLDER + "//Figures//success_bars.svg", format="svg")
 
 # %% Trajectory lengths (cm)
+unit = "dL_pc"
+
+# trial lengths
 trial_lens = (reach_trials["dL"].sum() / 10).reset_index()
 lens = (
     trial_lens[trial_success.success == 1]
@@ -574,19 +577,38 @@ lens = (
     .reset_index()
 )
 
+# starting positions
+trial_start_pos = (
+    reach_data.groupby(["p_id", "block_i", "trial", "goal"])[["x", "y", "z"]]
+    .first()
+    .reset_index()
+)
+p_start_pos = trial_start_pos.groupby("p_id")[["x", "y", "z"]].mean().reset_index()
+
+# relative trajectory lengths
+dl_pc = []
+for p_id, goal, dl in zip(lens.p_id, lens.goal, lens.dL):
+    start_pos = np.array(p_start_pos[p_start_pos.p_id == p_id][["x", "y", "z"]])
+    dl_mh = abs(OBJ_COORDS[goal] - start_pos).sum() * 100
+    dl_pc.append(dl / dl_mh * 100)
+
+lens["dL_pc"] = dl_pc
+
 # remove objects that have no successful DC or SC trials
 len_valid = lens[lens.block == "DC"].merge(
     lens[lens.block == "SC"], on=["p_id", "goal"]
 )
-len_valid_wide = len_valid.groupby(["p_id"])[["dL_x", "dL_y"]].mean().reset_index()
-len_valid_wide["SC-DC"] = len_valid_wide["dL_y"] - len_valid_wide["dL_x"]
+len_valid_wide = (
+    len_valid.groupby(["p_id"])[[unit + "_x", unit + "_y"]].mean().reset_index()
+)
+len_valid_wide["SC-DC"] = len_valid_wide[unit + "_y"] - len_valid_wide[unit + "_x"]
 len_valid_wide.columns = ["p_id", "DC", "SC", "SC-DC"]
 len_valid = pd.melt(
     len_valid_wide,
     id_vars="p_id",
     value_vars=["DC", "SC", "SC-DC"],
     var_name="block",
-    value_name="dL",
+    value_name=unit,
 )
 
 # length
@@ -595,17 +617,17 @@ fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
 plot_lines(
     len_valid[lens.p_id.isin(P_ID_HIGH)],
     lens[lens.p_id.isin(P_ID_LOW)]
-    .groupby(["p_id", "block"])["dL"]
+    .groupby(["p_id", "block"])[unit]
     .mean()
     .reset_index(),
     "block",
-    "dL",
+    unit,
     axs[0],
     "p_id",
     ["DC", "SC"],
     c,
-    "Trajectory length (cm)",
-    [28, 73],
+    f"Trajectory length ({'cm' if unit == 'dL' else '%'})",
+    [28, 73] if unit == "dL" else [80, 326],
 )
 
 # change in length
@@ -613,23 +635,24 @@ plot_CI(
     len_valid[len_valid.p_id.isin(P_ID_HIGH)],
     len_valid[len_valid.p_id.isin(P_ID_LOW)],
     "block",
-    "dL",
+    unit,
     axs[1],
     "p_id",
     ["SC-DC"],
     c,
-    "$\Delta$ Trajectory length (cm)",
-    [-20, 0],
+    f"$\Delta$ Trajectory length ({'cm' if unit == 'dL' else '%'})",
+    [-20, 0] if unit == "dL" else [-80, 0],
 )
-axs[1].set_yticks(range(-20, 1, 5))
+axs[1].set_yticks(range(-20, 1, 5) if unit == "dL" else range(-80, 1, 20))
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//lengths.svg", format="svg")
+# plt.savefig(FOLDER + f"//Figures//lengths_{unit}.svg", format="svg")
 
 # compare trajectory length
 run_ttest(
-    len_valid[len_valid.block == "SC"]["dL"].values,
-    len_valid[len_valid.block == "DC"]["dL"].values,
+    len_valid[len_valid.block == "SC"][unit].values,
+    len_valid[len_valid.block == "DC"][unit].values,
+    # plot_qq=True
 )
 
 # %% Success rate, trajectory length and predictions by object
