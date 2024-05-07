@@ -396,7 +396,9 @@ for p_id in P_IDS:
     accs.append(balanced_accuracy_score(labels, preds) * 100)
     cms.append(confusion_matrix(labels, preds, normalize="true", labels=CMDS) * 100)
 
-plot_confusion_matrix(cms, CMDS, axs[0], cmap="Blues")
+plot_confusion_matrix(
+    cms, ["up", "down", "left", "right", "forward"], axs[0], cmap="Blues"
+)
 
 # by frequency
 f_cms = []
@@ -665,7 +667,7 @@ obj_success = (
     trial_success.groupby(["p_id", "block", "goal"]).success.sum() / 6 * 100
 ).reset_index()
 plot_box(
-    obj_success[obj_success.block == "DC"],
+    obj_success[obj_success.block.isin(["DC"])],
     "goal",
     "success",
     axs[0],
@@ -673,11 +675,12 @@ plot_box(
     sns.color_palette()[2],
     "Success\nrate (%)",
     [-5, 105],
+    hue=None,
 )
 
 # trajectory length
 plot_box(
-    lens[lens.block == "DC"],
+    lens[lens.block.isin(["DC"])],
     "goal",
     "dL",
     axs[1],
@@ -685,6 +688,7 @@ plot_box(
     sns.color_palette()[1],
     "Trajectory\nlength (cm)",
     [20, 80],
+    hue=None,
 )
 
 # correct SC predictions
@@ -806,6 +810,9 @@ plot_CI(
     sns.color_palette()[0],
     "Accuracy (%)",
     [0, 100],
+    x_size=6,
+    pt_size=2,
+    alpha=0.6,
 )
 print("ci:", get_sample_CI(acc_df["acc"].values))
 
@@ -822,6 +829,9 @@ plot_CI(
     sns.color_palette()[3],
     "ITR (bits/min)",
     [0, 150],
+    x_size=6,
+    pt_size=2,
+    alpha=0.6,
 )
 print("ci:", get_sample_CI(acc_df["ITR"].values))
 
