@@ -319,7 +319,7 @@ def get_ITR(p, n, t):
 
 # %% Constants
 CMDS = list(CMD_MAP.keys())
-FOLDER = r"C:\Users\Kirill Kokorin\OneDrive - synchronmed.com\SSVEP robot control\Data\Experiment\Processed"
+FOLDER = r""
 P_IDS = [
     "P2",
     "P3",
@@ -409,9 +409,7 @@ for p_id, p_freqs in zip(P_IDS, F_LAYOUTS):
     f_cms.append(confusion_matrix(labels, preds, normalize="true", labels=FREQS) * 100)
 
 plot_confusion_matrix(f_cms, FREQS, axs[1], cmap="Purples")
-
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//decoding_cms.svg", format="svg")
 
 # %% Offline decoding correlations
 fig, axs = plt.subplots(1, 2, figsize=(5, 1.5), sharex=True, sharey=True)
@@ -447,7 +445,6 @@ for ax, f_trial in zip(axs.flatten(), [8, 13]):
 axs[0].set_ylabel("Chunks (%)")
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//8_13Hz_offline.svg", format="svg")
 
 # %% PSD
 ch_i = 1  # Oz
@@ -481,7 +478,6 @@ axs[4].set_ylabel("PSD")
 axs[4].set_xlabel("Frequency (Hz)")
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//Oz_psd.pdf", format="pdf")
 
 # %% Success rates
 trial_success = reach_trials.success.first().reset_index()
@@ -531,7 +527,6 @@ plot_CI(
 )
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//success.svg", format="svg")
 
 # compare success rates
 run_ttest(
@@ -565,7 +560,6 @@ axs.legend().remove()
 
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//success_bars.svg", format="svg")
 
 # %% Trajectory lengths (cm)
 unit = "dL_pc"
@@ -648,13 +642,12 @@ plot_CI(
 axs[1].set_yticks(range(-20, 1, 5) if unit == "dL" else range(-80, 1, 20))
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + f"//Figures//lengths_{unit}.svg", format="svg")
 
 # compare trajectory length
 run_ttest(
     len_valid[len_valid.block == "SC"][unit].values,
     len_valid[len_valid.block == "DC"][unit].values,
-    # plot_qq=True
+    plot_qq=False,
 )
 
 # %% Success rate, trajectory length and predictions by object
@@ -712,7 +705,6 @@ for ax in axs:
     ax.set_xticklabels(obj_labels)
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//obj_results.svg", format="svg")
 
 # %% Impact of decoding accuracy
 fig, axs = plt.subplots(1, 2, figsize=(5, 2), sharex=True)
@@ -759,7 +751,6 @@ plot_reg(
 
 fig.tight_layout()
 sns.despine()
-# plt.savefig(FOLDER + "//Figures//corrs.svg", format="svg")
 
 # %% Offline decoding recall with variable window sizes
 window_df = pd.read_csv(FOLDER + "//variable_window.csv", index_col=None)
@@ -774,12 +765,10 @@ for p_id, ax in zip(window_df["p_id"].unique(), axs):
         hue="freq",
         join=True,
         markersize=3,
-        # markers="x",
     )
 
     r, p = pearsonr(data.window_s, data.recall)
     print(f"P{p_id} recall vs window size correlation, r:{r:.3f}, p: {p:.3f}")
-    # ax.set_title(f"P{p_id}")
     ax.set_xlabel("Window size (s)")
     ax.set_ylim([0, 105])
     ax.axhline(20, linestyle="--", color="k", alpha=0.25)
@@ -791,7 +780,6 @@ axs[1].set_ylabel("")
 
 fig.tight_layout()
 sns.despine()
-# plt.savefig(FOLDER + "//Figures//P7_P9_window.svg", format="svg")
 
 # %% Summary of decoding performance and failure analysis
 fig, axs = plt.subplots(1, 3, figsize=(5, 1.5), width_ratios=[1, 1, 2.5])
@@ -857,7 +845,6 @@ axs[2].legend(title="")
 
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//acc_itr_fail.svg", format="svg")
 
 # %% Workload
 hf_df = pd.read_csv(FOLDER + "//questionnaire.csv", index_col=None)
@@ -912,10 +899,8 @@ plot_CI(
     "$\Delta$ Workload",
     [-30, 30],
 )
-
 sns.despine()
 fig.tight_layout()
-# plt.savefig(FOLDER + "//Figures//workload.svg", format="svg")
 
 run_ttest(hf_df["SC Total"].values, hf_df["DC Total"].values)
 
