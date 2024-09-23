@@ -317,6 +317,21 @@ def get_ITR(p, n, t):
     return (np.log2(n) + p * np.log2(p) + (1 - p) * np.log2((1 - p) / (n - 1))) / t
 
 
+def get_alpha(L, a, c0, c):
+    """Calculate assistance level based on robot confidence.
+
+    Args:
+        L (float): Maximum assistance level
+        a (float): Aggressiveness
+        c0 (float): Sigmoid inflection point
+        c (float): Robot confidence
+
+    Returns:
+        _type_: _description_
+    """
+    return L / (1 + np.exp(a * (c0 - c)))
+
+
 # %% Constants
 CMDS = list(CMD_MAP.keys())
 FOLDER = r""
@@ -362,6 +377,26 @@ F_LAYOUTS = [
     [11, 9, 13, 8, 7],
     [8, 9, 7, 13, 11],
 ]
+
+# %% Arbitration profile
+fig, axs = plt.subplots(1, 1, figsize=(2, 2))
+
+c = np.arange(0, 1, 0.01)
+alpha = get_alpha(0.7, 10, 0.5, c)
+sns.lineplot(x=c, y=alpha, ax=axs)
+
+alpha_old = get_alpha(0.9, 10, 0.5, c)
+sns.lineplot(x=c, y=alpha_old, ax=axs)
+
+axs.set_xlabel("Confidence")
+axs.set_ylabel("Assistance")
+axs.set_ylim([0, 1])
+axs.set_yticks([0, 0.5, 1])
+axs.set_xlim([0, 1])
+axs.set_aspect("equal", adjustable="box")
+
+sns.despine()
+fig.tight_layout()
 
 # %% Load participant data
 reach_blocks = [3, 5, 6, 7]
@@ -485,7 +520,7 @@ success = (
     trial_success.groupby(["p_id", "block"]).success.sum() * 100 / 24
 ).reset_index()
 c = sns.color_palette()[2]
-fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
+fig, axs = plt.subplots(1, 2, figsize=(3, 2.5), width_ratios=[2, 1])
 
 # success rate
 plot_lines(
@@ -583,10 +618,12 @@ p_start_pos = trial_start_pos.groupby("p_id")[["x", "y", "z"]].mean().reset_inde
 
 # relative trajectory lengths
 dl_pc = []
+min_dist = [[] for _g in range(len(OBJ_COORDS))]
 for p_id, goal, dl in zip(lens.p_id, lens.goal, lens.dL):
     start_pos = np.array(p_start_pos[p_start_pos.p_id == p_id][["x", "y", "z"]])
     dl_mh = abs(OBJ_COORDS[goal] - start_pos).sum() * 100
     dl_pc.append(dl / dl_mh * 100)
+    min_dist[goal].append(dl_mh)
 
 lens["dL_pc"] = dl_pc
 
@@ -609,7 +646,7 @@ len_valid = pd.melt(
 
 # length
 c = sns.color_palette()[1]
-fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
+fig, axs = plt.subplots(1, 2, figsize=(3, 2.5), width_ratios=[2, 1])
 plot_lines(
     len_valid[lens.p_id.isin(P_ID_HIGH)],
     lens[lens.p_id.isin(P_ID_LOW)]
@@ -680,9 +717,15 @@ plot_box(
     objs,
     sns.color_palette()[1],
     "Trajectory\nlength (cm)",
-    [20, 80],
+    [18, 80],
     hue=None,
 )
+
+# min distance to each object
+r_obj = 4.5 / 2  # cm
+for g in min_dist:
+    # axs[1].axhline(np.min(g)-r_obj, linestyle="--", color="k", alpha=0.25)
+    print(np.min(g) - r_obj)
 
 # correct SC predictions
 trial_recall = (
@@ -782,7 +825,7 @@ fig.tight_layout()
 sns.despine()
 
 # %% Summary of decoding performance and failure analysis
-fig, axs = plt.subplots(1, 3, figsize=(5, 1.5), width_ratios=[1, 1, 2.5])
+fig, axs = plt.subplots(1, 3, figsize=(5, 1.5), width_ratios=[1.15, 1.15, 2.2])
 result_df = pd.read_csv(FOLDER + "//trial_results.csv", index_col=None)
 result_df["bounds"] = result_df["collide"] + result_df["near"]
 
@@ -802,7 +845,8 @@ plot_CI(
     pt_size=2,
     alpha=0.6,
 )
-print("ci:", get_sample_CI(acc_df["acc"].values))
+print("Acc ci:", get_sample_CI(acc_df["acc"].values))
+axs[0].axhline(20, linestyle="--", color="k", alpha=0.25)
 
 # information transfer rate
 acc_df["ITR"] = get_ITR(acc_df["acc"] / 100, 5, 1 / 60)
@@ -821,7 +865,24 @@ plot_CI(
     pt_size=2,
     alpha=0.6,
 )
-print("ci:", get_sample_CI(acc_df["ITR"].values))
+print("ITR ci:", get_sample_CI(acc_df["ITR"].values))
+
+# ITR comparison
+ITR_research = [
+    67.37,
+    159.40,
+    65.00,
+    29.15,
+    30.91,
+    71.90,
+    15.20,
+    47.96,
+    25.66,
+    68.50,
+    42.84,
+]
+for q in np.quantile(ITR_research, [0.25, 0.5, 0.75]):
+    axs[1].axhline(q, linestyle=":", color="k", alpha=0.25)
 
 # failures
 failures_df = pd.melt(
@@ -851,8 +912,8 @@ hf_df = pd.read_csv(FOLDER + "//questionnaire.csv", index_col=None)
 fig, axs = plt.subplots(1, 1, figsize=(2, 2))
 
 # factor tally
-factors = ["Mental", "Physical", "Temporal", "Performance", "Effort", "Frustration"]
-factor_labels = ["MD", "PD", "TD", "P", "E", "F"]
+factors = ["Physical", "Mental", "Temporal", "Performance", "Effort", "Frustration"]
+factor_labels = ["PD", "MD", "TD", "P", "E", "F"]
 sns.barplot(
     data=hf_df.melt(id_vars=["ID"], value_vars=factors),
     x="variable",
@@ -867,8 +928,47 @@ axs.set_ylim([0, 5])
 axs.set_xticklabels(factor_labels)
 axs.set_xlabel("Factor")
 
-# workload
-fig, axs = plt.subplots(1, 2, figsize=(3.5, 2.5), width_ratios=[2, 1])
+# workload by factor
+fig, axs = plt.subplots(1, 1, figsize=(2, 2.5))
+mode_factors = [m + " " + f for m in ["DC", "SC"] for f in factors]
+mode_factor_df = hf_df.melt(id_vars=["ID"], value_vars=mode_factors)
+mode_factor_df["mode"] = mode_factor_df["variable"].apply(lambda x: x.split(" ")[0])
+mode_factor_df["factor"] = mode_factor_df["variable"].apply(lambda x: x.split(" ")[1])
+sns.barplot(
+    data=mode_factor_df,
+    y="factor",
+    x="value",
+    hue="mode",
+    ax=axs,
+    order=factors,
+    errorbar="se",
+    palette=[sns.color_palette()[6], sns.color_palette()[7]],
+)
+axs.set_xlabel("Workload")
+axs.set_xlim([0, 100])
+axs.set_yticklabels(factor_labels)
+axs.set_ylabel("")
+axs.legend(title="", loc="upper right", bbox_to_anchor=(1.05, 1.1))
+
+sns.despine()
+fig.tight_layout()
+
+# %% Workload results
+wl_factor_df = mode_factor_df.groupby(["mode", "factor"])["value"].agg(
+    ["mean", "count", "std"]
+)
+wl_factor_df = wl_factor_df.reset_index()
+
+for f in factors:
+    for m in ["SC", "DC"]:
+        result = wl_factor_df[
+            (wl_factor_df["mode"] == m) & (wl_factor_df["factor"] == f)
+        ]
+        m, f, mu, n, std = result.values[0]
+        print(f"{m} {f}: {mu:.1f} ({std/np.sqrt(n):.1f})")
+
+# %% Total workload
+fig, axs = plt.subplots(1, 2, figsize=(3, 2.5), width_ratios=[2, 1])
 wl_df = hf_df.melt(id_vars=["ID"], value_vars=["DC Total", "SC Total"]).copy()
 wl_df["mode"] = wl_df["variable"].apply(lambda x: x.split(" ")[0])
 hf_df["dWL"] = hf_df["SC Total"] - hf_df["DC Total"]
