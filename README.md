@@ -17,3 +17,4 @@ The session manager can be used to run an observation trial or a robotic reachin
 - **robot_control.py** classes/functions to control the Reachy robot and shared control algorithms.
 - **stimulus.py** classes/functions to control stimuli parameters by communicating with the HoloLens.
 - **Training_session** folder: Stimulus presentation server developed using Unity 2022.3. **StimBehaviour.cs** and **StimServer.cs** control the stimuli and communicate with the Python client.
+The software requires Python 3.10.9.
