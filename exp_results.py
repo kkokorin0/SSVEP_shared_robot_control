@@ -446,6 +446,36 @@ for p_id, p_freqs in zip(P_IDS, F_LAYOUTS):
 plot_confusion_matrix(f_cms, FREQS, axs[1], cmap="Purples")
 fig.tight_layout()
 
+# %% Offline decoding by participant
+fig, axs = plt.subplots(1, 1, figsize=(5.6, 2.8))
+obs_recalls = np.array([np.diagonal(_cm) for _cm in f_cms]).squeeze()
+obs_recall_df = pd.DataFrame(obs_recalls, columns=FREQS)
+obs_recall_df["p_id"] = P_IDS
+obs_recall_df = obs_recall_df.melt(id_vars="p_id", value_vars=FREQS)
+plot_box(
+    obs_recall_df,
+    "p_id",
+    "value",
+    axs,
+    ["P" + str(_i) for _i in range(1, 19)],
+    col=None,
+    ylabel="Recall (%)",
+    ylim=[0, 100],
+    hue=None,
+)
+sns.pointplot(
+    data=obs_recall_df[obs_recall_df.variable == 13],
+    x="p_id",
+    order=["P" + str(_i) for _i in range(1, 19)],
+    y="value",
+    ax=axs,
+    join=False,
+    color="black",
+)
+axs.set_xlabel("Participant")
+sns.despine()
+fig.tight_layout()
+
 # %% Offline decoding correlations
 fig, axs = plt.subplots(1, 2, figsize=(5, 1.5), sharex=True, sharey=True)
 
@@ -1145,3 +1175,38 @@ ax.set_zticks([-0.1, 0, 0.1])
 ax.set_zlabel("z (m)")
 
 plt.show()
+
+# %% Comparison with simulated BCI experiment
+sim_exp = pd.read_csv(FOLDER + "//sim_BCI_results.csv", index_col=0)
+
+# Success rates
+sim_exp_group = sim_exp.groupby(["Type", "Subject"])
+sim_success = (sim_exp_group["success"].sum() / sim_exp_group["success"].size()) * 100
+for acc in ["65", "79"]:
+    success_d = sim_success["SC" + acc] - sim_success["DC" + acc]
+    print(
+        f"Success ({acc:s}%), mu: {np.mean(success_d):.3f}, CI: {get_sample_CI(success_d)}"
+    )
+
+# Normalised trajectory length
+obj_mh_dist = [0.566, 0.364, 0.302, 0.377, 0.339]
+sim_exp["norm_d"] = (sim_exp["Traj_len"] * 100) / [
+    obj_mh_dist[_t - 1] for _t in sim_exp["Goal_target"]
+]
+sim_exp_targets = sim_exp[sim_exp.success].groupby(["Type", "Subject", "Goal_target"])
+sim_norm_d = (
+    sim_exp[sim_exp.success]
+    .groupby(["Type", "Subject", "Goal_target"])["norm_d"]
+    .mean()
+)
+for acc in ["65", "79"]:
+    norm_d_d = sim_norm_d["SC" + acc] - sim_norm_d["DC" + acc]
+    print(
+        f"Normalised distance ({acc:s}%), mu: {np.mean(norm_d_d):.3f}, CI: {get_sample_CI(norm_d_d)}"
+    )
+
+# Workload
+sim_wl = pd.read_csv(FOLDER + "//sim_BCI_workload.csv", index_col=None)
+for acc in ["65", "79"]:
+    wl_d = sim_wl["SC" + acc] - sim_wl["DC" + acc]
+    print(f"Workload ({acc:s}%), mu: {np.mean(wl_d):.3f}, CI: {get_sample_CI(wl_d)}")

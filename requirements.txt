@@ -54,6 +54,7 @@ pyreadline3==3.4.1
 python-dateutil==2.9.0.post0
 pytz==2024.2
 pywin32==306
+pyxdf==1.16.8
 pyzmq==26.2.0
 reachy-sdk==0.7.0
 reachy-sdk-api==0.7.3
