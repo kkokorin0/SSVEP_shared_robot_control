@@ -8,6 +8,7 @@ The session manager can be used to run an observation trial or a robotic reachin
 <img src="https://github.com/kkokorin0/SSVEP_shared_robot_control/blob/main/participant_view.png" width="500"><sub><br> <strong>Fig. 1.</strong> View of the experiment through the HoloLens. Five flashing stimuli (1) are displayed around the robot end-effector (2, behind middle stimulus). Attending to any of the outer stimuli will cause the end-effector to move in that direction and attending to the middle stimulus will cause it to move forward. The stimuli are continuously updated to maintain their position relative to the end-effector. In reaching trials, the participant needs to touch the orange object (3), with the end-effector, while avoiding the other three grey objects (4) located on the shelf (5).</sub>
 
 ## Files
+The software requires Python 3.10.9.
 - **session_manager.py** master GUI for running an experiment and communicating with the EEG, HoloLens and Reachy.
 - **obj_pos.py** testing script for controling the robot to reach to set locations in space.
 - **session_results.py** analysis notebook for extracting data from a recording (stored using [LabRecorder](https://github.com/labstreaminglayer/App-LabRecorder)).
@@ -17,4 +18,3 @@ The session manager can be used to run an observation trial or a robotic reachin
 - **robot_control.py** classes/functions to control the Reachy robot and shared control algorithms.
 - **stimulus.py** classes/functions to control stimuli parameters by communicating with the HoloLens.
 - **Training_session** folder: Stimulus presentation server developed using Unity 2022.3. **StimBehaviour.cs** and **StimServer.cs** control the stimuli and communicate with the Python client.
-The software requires Python 3.10.9.
